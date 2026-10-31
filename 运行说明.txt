@@ -1,0 +1,51 @@
+周览 Worklog  运行 / 演示说明
+==================================================
+
+一、最省事：双击「运行Worklog.bat」
+    它会依次做四件事：
+      1) 检查 8080 端口是否被占（IDEA 里跑着同一个工程就会占住）
+      2) 检查本机 MySQL(3306) 是否在跑
+      3) 离线重新编译打包（约 10 秒，改过的代码自动生效）
+      4) 启动服务
+    启动后访问：
+      接口根地址  http://localhost:8080/api
+      登录        POST /api/auth/login
+                  请求体 {"username":"admin","password":"123456"}
+    停止：黑窗口里按 Ctrl+C，或直接关掉窗口。
+    换端口：开始菜单搜 cmd，cd 到工程目录，执行  运行Worklog.bat 8081
+
+二、在 IDEA 里跑（改代码调试时用）
+    右上角运行配置选 WorklogApplication → Shift+F10
+    若下拉里没有：打开 src/main/java/com/worklog/WorklogApplication.java，
+    点 main 左边绿色三角跑一次，之后下拉里就有了。
+    注意：IDEA 里跑着的时候 8080 被占，此时再双击 bat 会提示端口占用，属正常。
+
+三、只打包（交作业 / 换机器演示）
+    双击「打包Worklog.bat」→ 生成 target\worklog.jar 和 dist\worklog.jar
+    这个 jar 自带 Tomcat，目标机器只要 JDK 17+：
+        java -jar worklog.jar
+        java -jar worklog.jar --server.port=8090           换端口
+        java -jar worklog.jar --spring.datasource.password=xxx   改密码
+    对方机器也要能连 MySQL，并且先执行 schema.sql 建库建表。
+
+四、常见问题
+    1) 提示端口 8080 已被占用
+       → IDEA 里那个实例还在跑（红色方块停掉），或任务管理器结束 java.exe
+       → 或换个端口：运行Worklog.bat 8081
+    2) 报 Communications link failure
+       → MySQL 没启动：管理员命令行 net start MySQL97
+       → 或密码不对：application.yml 里 spring.datasource.password
+    3) 改了代码没生效
+       → 用「运行Worklog.bat」会自动重新打包；
+         直接双击 target\worklog.jar 跑的是旧代码，别这么做
+    4) 中文乱码
+       → 本脚本用 GBK 存盘、控制台默认 936 码页，正常不会乱码；
+         若你在 cmd 里手动改过 chcp 65001，先执行 chcp 936
+
+五、本机环境（换机器要相应改脚本里的两个路径）
+    JDK 21    D:\jdkk
+    Maven     D:\MAVEN\apache-maven-3.9.14-bin\apache-maven-3.9.14
+    Maven 镜像 C:\Users\LS\.m2\settings.xml（阿里云；中央仓库本机连不上）
+    数据库    MySQL97 服务，库 worklog，root/123456
+    端口      8080，context-path = /api
+    打包产物   target\worklog.jar（约 52 MB，内含 Tomcat 和全部依赖）

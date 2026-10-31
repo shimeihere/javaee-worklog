@@ -1,0 +1,30 @@
+HELP.md
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+### IntelliJ IDEA ###
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+### VS Code ###
+.vscode/
+
+### Logs / runtime ###
+logs/
+*.log
+uploads/
+dist/
+
+### 敏感配置文件（千万别传！） ###
+# 如果老师需要运行，你可以在 README 里告诉他需要自己配数据库
+src/main/resources/application.properties
+src/main/resources/application.yml
+
+### OS ###
+Thumbs.db
+.DS_Store
