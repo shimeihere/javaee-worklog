@@ -8,14 +8,15 @@ import { defineStore } from 'pinia'
 export const useBoardStore = defineStore('board', {
   state: () => ({
     filters: {
-      range: 'week',
+      // 默认近 30 天：按周/按本月看时，月初或周一打开很容易全是 0，演示第一眼像坏掉了
+      range: 'last30',
       deptId: null,
       projectId: null
     }
   }),
   actions: {
     reset() {
-      this.filters.range = 'week'
+      this.filters.range = 'last30'
       this.filters.deptId = null
       this.filters.projectId = null
     }

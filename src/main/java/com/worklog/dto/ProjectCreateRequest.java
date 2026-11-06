@@ -5,6 +5,8 @@ import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import lombok.Data;
 
+import java.time.LocalDate;
+
 /**
  * 创建项目请求体。
  */
@@ -25,4 +27,7 @@ public class ProjectCreateRequest {
 
     @Size(max = 500, message = "项目描述不能超过 500 个字符")
     private String description;
+
+    /** 计划完成日期（选填）；不填就只统计"已进行天数" */
+    private LocalDate plannedEndDate;
 }

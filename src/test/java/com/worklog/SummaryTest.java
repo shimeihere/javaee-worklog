@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,7 +74,7 @@ class SummaryTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("按时间：返回区间内每一天（含没有提交的周末）")
+    @DisplayName("按时间：返回区间内每一天，且最近日期先显示（含没有提交的周末）")
     void dateDimension() throws Exception {
         JsonNode data = get("/summary", login("boss"),
                 Map.of("dimension", "date", "size", "60",
@@ -81,8 +82,18 @@ class SummaryTest extends ApiTestSupport {
 
         assertThat(data.path("total").asLong()).isEqualTo(11);
         JsonNode first = data.path("records").get(0);
-        assertThat(first.path("name").asText()).isEqualTo("2026-10-19");
+        assertThat(first.path("name").asText()).as("最近日期排第一").isEqualTo("2026-10-29");
         assertThat(first.path("sub").asText()).startsWith("星期");
+
+        // 整列按日期倒序，不会出现"翻到最后一页才是今天"
+        String previous = null;
+        for (JsonNode row : data.path("records")) {
+            String date = row.path("name").asText();
+            if (previous != null) {
+                assertThat(date.compareTo(previous)).isLessThan(0);
+            }
+            previous = date;
+        }
     }
 
     @Test
@@ -122,7 +133,6 @@ class SummaryTest extends ApiTestSupport {
     @DisplayName("导出 Excel：返回 xlsx 二进制，大小合理")
     void exportExcel() throws Exception {
         MvcResult result = mockMvc.perform(MockMvcRequestBuilders.get(CTX + "/summary/export")
-                        .contextPath(CTX)
                         .param("dimension", "user")
                         .header(AUTH_HEADER, "Bearer " + login("boss")))
                 .andExpect(status().isOk())
@@ -149,7 +159,7 @@ class SummaryTest extends ApiTestSupport {
         String liyue = login("liyue");
 
         JsonNode ownDept = get("/summary/users/4/daily", liyue,
-                Map.of("startDate", "2026-10-01", "endDate", "2026-10-31"));
+                Map.of("startDate", LocalDate.now().minusDays(30).toString(), "endDate", LocalDate.now().toString()));
         assertThat(ownDept.path("code").asInt()).isEqualTo(200);
         assertThat(ownDept.path("data").size()).isGreaterThan(0);
         JsonNode first = ownDept.path("data").get(0);
@@ -160,10 +170,11 @@ class SummaryTest extends ApiTestSupport {
         assertThat(crossDept.path("code").asInt()).isEqualTo(403);
         assertThat(crossDept.path("message").asText()).contains("本部门");
 
-        // 高管只对组织负责，不越级看个人明细
+        // 总裁监督权：高管可下钻查看任何员工明细（含跨部门）
         JsonNode execView = get("/summary/users/6/daily", login("boss"),
-                Map.of("startDate", "2026-10-01", "endDate", "2026-10-31"));
-        assertThat(execView.path("code").asInt()).as("高管不越级看明细").isEqualTo(403);
+                Map.of("startDate", LocalDate.now().minusDays(30).toString(), "endDate", LocalDate.now().toString()));
+        assertThat(execView.path("code").asInt()).as("高管可看任何人明细").isEqualTo(200);
+        assertThat(execView.path("data").size()).isGreaterThan(0);
 
         // 管理员连汇总都进不去
         JsonNode admin = get("/summary/users/4/daily", login("admin"));
@@ -171,10 +182,10 @@ class SummaryTest extends ApiTestSupport {
     }
 
     @Test
-    @DisplayName("周报明细：负责人可查本部门，跨部门与高管都 403")
+    @DisplayName("周报明细：负责人看本部门、高管看任何人，跨部门负责人 403")
     void userWeeklyDetail() throws Exception {
         JsonNode weekly = get("/summary/users/4/weekly", login("liyue"),
-                Map.of("startDate", "2026-10-01", "endDate", "2026-10-31"));
+                Map.of("startDate", LocalDate.now().minusDays(30).toString(), "endDate", LocalDate.now().toString()));
         assertThat(weekly.path("code").asInt()).isEqualTo(200);
         assertThat(weekly.path("data").size()).isGreaterThan(0);
 
@@ -185,8 +196,8 @@ class SummaryTest extends ApiTestSupport {
         // 负责人跨部门查周报被拦
         assertThat(get("/summary/users/6/weekly", login("liyue")).path("code").asInt())
                 .isEqualTo(403);
-        // 高管也不能看个人周报
+        // 高管可看任何人的周报
         assertThat(get("/summary/users/4/weekly", login("boss")).path("code").asInt())
-                .isEqualTo(403);
+                .isEqualTo(200);
     }
 }

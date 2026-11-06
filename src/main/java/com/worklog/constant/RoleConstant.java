@@ -45,7 +45,12 @@ public final class RoleConstant {
         return DISPLAY_NAMES.getOrDefault(role, role);
     }
 
-    /** 全局数据范围（管理员、高管可见全公司数据） */
+    /**
+     * 组织架构类数据的全局可见（管理员、高管）。
+     *
+     * <p>注意：只用于项目/部门/人员名单这类组织信息；
+     * 日报周报等业务单据请走 {@code DataScopeService#canViewReportOf}，管理员不在其列。</p>
+     */
     public static boolean isGlobal(String role) {
         return ADMIN.equals(role) || EXECUTIVE.equals(role);
     }

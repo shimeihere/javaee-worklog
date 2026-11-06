@@ -111,9 +111,6 @@ public class WeeklyReportServiceImpl implements WeeklyReportService {
         if (!StringUtils.hasText(report.getSummary())) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "提交前请先填写本周总结");
         }
-        if (report.getProjectId() == null) {
-            throw new BusinessException(ResultCode.BAD_REQUEST, "提交前请先选择关联项目");
-        }
         changeStatus(id, ReportConstant.STATUS_SUBMITTED);
         log.info("周报提交：id={}, userId={}, week={}", id, report.getUserId(), report.getStartDate());
         return toVO(weeklyReportMapper.selectById(id));

@@ -44,7 +44,8 @@ import java.util.stream.Collectors;
 /**
  * 日报服务实现。
  *
- * <p>状态流转：草稿(0) ⇄ 已提交(1)。提交校验内容与项目；撤回不做时间限制，
+ * <p>状态流转：草稿(0) ⇄ 已提交(1)。提交只校验完成内容；关联项目选填
+ * （有些人做的是部门事务、没有具体项目，不能因此交不了日报）；撤回不做时间限制，
  * 便于员工修正历史记录（是否允许撤回历史由产品决定，当前放开）。</p>
  */
 @Slf4j
@@ -118,9 +119,6 @@ public class DailyReportServiceImpl implements DailyReportService {
         }
         if (!StringUtils.hasText(report.getContentDone())) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "提交前请先填写今日完成内容");
-        }
-        if (report.getProjectId() == null) {
-            throw new BusinessException(ResultCode.BAD_REQUEST, "提交前请先选择关联项目");
         }
         changeStatus(id, ReportConstant.STATUS_SUBMITTED);
         log.info("日报提交：id={}, userId={}, date={}", id, report.getUserId(), report.getReportDate());

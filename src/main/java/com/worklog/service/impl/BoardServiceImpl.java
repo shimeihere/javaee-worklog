@@ -7,18 +7,23 @@ import com.worklog.constant.ReportConstant;
 import com.worklog.constant.RoleConstant;
 import com.worklog.entity.DailyReport;
 import com.worklog.entity.Project;
+import com.worklog.entity.ProjectMember;
 import com.worklog.entity.SysDept;
 import com.worklog.entity.SysUser;
 import com.worklog.mapper.DailyReportMapper;
 import com.worklog.mapper.ProjectMapper;
+import com.worklog.mapper.ProjectMemberMapper;
 import com.worklog.mapper.SysDeptMapper;
 import com.worklog.mapper.SysUserMapper;
 import com.worklog.security.LoginUser;
 import com.worklog.security.UserContext;
 import com.worklog.service.BoardService;
+import com.worklog.service.DataScopeService;
+import com.worklog.util.ProjectTime;
 import com.worklog.vo.BoardDeptVO;
 import com.worklog.vo.BoardHeatVO;
 import com.worklog.vo.BoardOverviewVO;
+import com.worklog.vo.BoardActivityVO;
 import com.worklog.vo.BoardPendingVO;
 import com.worklog.vo.BoardProjectVO;
 import com.worklog.vo.BoardTrendVO;
@@ -58,10 +63,15 @@ public class BoardServiceImpl implements BoardService {
     private static final int TREND_DAYS = 7;
     private static final int HEATMAP_DAYS = 28;
 
+    /** 项目状态：已归档（归档项目不再进入看板的项目进度/排行） */
+    private static final int PROJECT_STATUS_ARCHIVED = 1;
+
     private final SysUserMapper sysUserMapper;
     private final SysDeptMapper sysDeptMapper;
     private final DailyReportMapper dailyReportMapper;
     private final ProjectMapper projectMapper;
+    private final ProjectMemberMapper projectMemberMapper;
+    private final DataScopeService dataScopeService;
 
     @Override
     public BoardOverviewVO overview(String range, Long deptId, Long projectId) {
@@ -81,7 +91,7 @@ public class BoardServiceImpl implements BoardService {
         int submitRate = rate(submittedCount, expectedCount);
 
         List<BoardDeptVO> deptStats = buildDeptStats(me, members, rangeReports, workdays);
-        List<BoardProjectVO> projectStats = buildProjectStats(rangeReports, workdays);
+        List<BoardProjectVO> projectStats = buildProjectStats(memberIds, rangeReports, projectId, workdays);
         // 高管不直接对个人催报，只对组织与项目负责，所以不下发待催报名单
         List<BoardPendingVO> pendingUsers = RoleConstant.EXECUTIVE.equals(me.role())
                 ? List.of()
@@ -125,21 +135,99 @@ public class BoardServiceImpl implements BoardService {
                 .heatmap(heatmap)
                 .projectStats(projectStats)
                 .pendingUsers(pendingUsers)
+                .recentActivities(buildRecentActivities(memberIds))
                 .build();
     }
 
     /**
-     * 项目排行：区间内每个项目收到的日报数与参与人数。
+     * 最新动态：成员最近提交的 10 份日报（右侧「最新动态」Tab）。
      */
-    private List<BoardProjectVO> buildProjectStats(List<DailyReport> rangeReports, int workdays) {
-        Map<Long, List<DailyReport>> byProject = rangeReports.stream()
-                .filter(report -> report.getProjectId() != null)
-                .collect(Collectors.groupingBy(DailyReport::getProjectId));
-        if (byProject.isEmpty()) {
+    private List<BoardActivityVO> buildRecentActivities(Set<Long> memberIds) {
+        if (memberIds.isEmpty()) {
+            return List.of();
+        }
+        List<DailyReport> reports = dailyReportMapper.selectList(new LambdaQueryWrapper<DailyReport>()
+                .select(DailyReport::getUserId, DailyReport::getReportDate, DailyReport::getProjectId,
+                        DailyReport::getHours, DailyReport::getUpdateTime)
+                .in(DailyReport::getUserId, memberIds)
+                .eq(DailyReport::getStatus, ReportConstant.STATUS_SUBMITTED)
+                .orderByDesc(DailyReport::getReportDate)
+                .orderByDesc(DailyReport::getUpdateTime)
+                .last("LIMIT 10"));
+        if (reports.isEmpty()) {
             return List.of();
         }
 
-        List<Project> projects = projectMapper.selectBatchIds(byProject.keySet());
+        Set<Long> userIds = reports.stream().map(DailyReport::getUserId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, SysUser> users = sysUserMapper.selectBatchIds(userIds).stream()
+                .collect(Collectors.toMap(SysUser::getId, u -> u, (a, b) -> a));
+
+        Set<Long> projectIds = reports.stream().map(DailyReport::getProjectId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> projectNames = projectIds.isEmpty() ? Map.of()
+                : projectMapper.selectBatchIds(projectIds).stream()
+                .collect(Collectors.toMap(Project::getId, Project::getProjectName, (a, b) -> a));
+
+        Set<Long> deptIds = users.values().stream().map(SysUser::getDeptId)
+                .filter(Objects::nonNull).collect(Collectors.toSet());
+        Map<Long, String> deptNames = deptIds.isEmpty() ? Map.of()
+                : sysDeptMapper.selectBatchIds(deptIds).stream()
+                .collect(Collectors.toMap(SysDept::getId, SysDept::getDeptName, (a, b) -> a));
+
+        return reports.stream().map(report -> {
+            SysUser user = users.get(report.getUserId());
+            return BoardActivityVO.builder()
+                    .userId(report.getUserId())
+                    .realName(user == null ? "—" : user.getRealName())
+                    .deptName(user == null || user.getDeptId() == null
+                            ? null : deptNames.get(user.getDeptId()))
+                    .reportDate(report.getReportDate())
+                    .projectName(report.getProjectId() == null
+                            ? null : projectNames.get(report.getProjectId()))
+                    .hours(report.getHours() == null ? null : report.getHours().intValue())
+                    .submittedAt(report.getUpdateTime())
+                    .build();
+        }).toList();
+    }
+
+    /**
+     * 项目进度 / 项目排行：区间内每个项目的已提交日报数、参与人数与进度。
+     *
+     * <p>与"只从日报反查项目"不同，这里先按数据范围取出全部项目（部门负责人 = 本部门项目 +
+     * 本人负责的项目），所以本期还没人填报的项目也会以 0% 出现在看板上——项目看板要能看见"没人动"的项目。
+     * 参与人 = 项目成员表里的人 ∪ 本期在该项目填过日报的人，且只统计当前看板可见成员，保证分母口径一致。</p>
+     */
+    private List<BoardProjectVO> buildProjectStats(Set<Long> memberIds, List<DailyReport> rangeReports,
+                                                   Long projectId, int workdays) {
+        LambdaQueryWrapper<Project> wrapper = new LambdaQueryWrapper<>();
+        dataScopeService.applyProjectScope(wrapper);
+        wrapper.ne(Project::getStatus, PROJECT_STATUS_ARCHIVED);
+        if (projectId != null) {
+            wrapper.eq(Project::getId, projectId);
+        }
+        List<Project> projects = projectMapper.selectList(wrapper);
+        if (projects.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Long, List<DailyReport>> byProject = rangeReports.stream()
+                .filter(report -> report.getProjectId() != null)
+                .collect(Collectors.groupingBy(DailyReport::getProjectId));
+
+        // 项目成员（只保留当前看板可见成员，避免把别的部门的人算进分母）
+        List<Long> projectIds = projects.stream().map(Project::getId).toList();
+        Map<Long, Set<Long>> membersByProject = new HashMap<>();
+        if (!memberIds.isEmpty()) {
+            projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
+                            .select(ProjectMember::getProjectId, ProjectMember::getUserId)
+                            .in(ProjectMember::getProjectId, projectIds))
+                    .stream()
+                    .filter(member -> memberIds.contains(member.getUserId()))
+                    .forEach(member -> membersByProject
+                            .computeIfAbsent(member.getProjectId(), key -> new java.util.HashSet<>())
+                            .add(member.getUserId()));
+        }
 
         Set<Long> leaderIds = projects.stream().map(Project::getLeaderId)
                 .filter(Objects::nonNull).collect(Collectors.toSet());
@@ -154,10 +242,14 @@ public class BoardServiceImpl implements BoardService {
                 .collect(Collectors.toMap(SysDept::getId, SysDept::getDeptName, (a, b) -> a));
 
         List<BoardProjectVO> stats = new ArrayList<>();
+        LocalDate today = LocalDate.now();
         for (Project project : projects) {
             List<DailyReport> mine = byProject.getOrDefault(project.getId(), List.of());
-            int participants = (int) mine.stream().map(DailyReport::getUserId)
-                    .filter(Objects::nonNull).distinct().count();
+            LocalDate start = ProjectTime.startDate(project.getCreateTime());
+            LocalDate plannedEnd = project.getPlannedEndDate();
+            Set<Long> participants = new java.util.HashSet<>(
+                    membersByProject.getOrDefault(project.getId(), Set.of()));
+            mine.stream().map(DailyReport::getUserId).filter(Objects::nonNull).forEach(participants::add);
 
             stats.add(BoardProjectVO.builder()
                     .projectId(project.getId())
@@ -165,8 +257,15 @@ public class BoardServiceImpl implements BoardService {
                     .leaderName(project.getLeaderId() == null ? null : leaderNames.get(project.getLeaderId()))
                     .deptName(project.getDeptId() == null ? null : deptNames.get(project.getDeptId()))
                     .submitted(mine.size())
-                    .participants(participants)
-                    .rate(rate(mine.size(), participants * Math.max(workdays, 1)))
+                    .participants(participants.size())
+                    .rate(rate(mine.size(), Math.max(participants.size(), 1) * Math.max(workdays, 1)))
+                    .startDate(start)
+                    .plannedEndDate(plannedEnd)
+                    .elapsedDays(ProjectTime.elapsedDays(start, today))
+                    .plannedDays(ProjectTime.plannedDays(start, plannedEnd))
+                    .remainingDays(ProjectTime.remainingDays(plannedEnd, today))
+                    .timeProgress(ProjectTime.timeProgress(start, plannedEnd, today))
+                    .overdue(ProjectTime.overdue(plannedEnd, today))
                     .build());
         }
 
@@ -183,8 +282,9 @@ public class BoardServiceImpl implements BoardService {
             return "week";
         }
         return switch (range) {
-            case "week", "lastWeek", "month" -> range;
-            default -> throw new BusinessException(ResultCode.BAD_REQUEST, "range 只能是 week / lastWeek / month");
+            case "week", "lastWeek", "month", "last30" -> range;
+            default -> throw new BusinessException(ResultCode.BAD_REQUEST,
+                    "range 只能是 week / lastWeek / month / last30");
         };
     }
 
@@ -196,6 +296,8 @@ public class BoardServiceImpl implements BoardService {
             }
             case "month" -> new DateRange(today.withDayOfMonth(1),
                     today.withDayOfMonth(today.lengthOfMonth()));
+            // 近 30 天：跨月也能看到最近的数据，演示/月度复盘都用这个口径
+            case "last30" -> new DateRange(today.minusDays(29), today);
             default -> {
                 LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
                 yield new DateRange(monday, monday.plusDays(6));
@@ -315,12 +417,17 @@ public class BoardServiceImpl implements BoardService {
             return List.of();
         }
         Map<Long, String> deptNames = deptNames(members);
+        // 催报名单是给负责人用的，本人不在其中（自己催自己没有意义）
+        Long meId = UserContext.requireUserId();
 
         Map<Long, List<DailyReport>> byUser = rangeReports.stream()
                 .collect(Collectors.groupingBy(DailyReport::getUserId));
 
         List<BoardPendingVO> pending = new ArrayList<>();
         for (SysUser member : members) {
+            if (Objects.equals(member.getId(), meId)) {
+                continue;
+            }
             List<DailyReport> mine = byUser.getOrDefault(member.getId(), List.of());
             long submittedDays = mine.stream()
                     .map(DailyReport::getReportDate)

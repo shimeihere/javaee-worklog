@@ -36,6 +36,8 @@ import java.time.format.DateTimeParseException;
 @RestController
 @RequestMapping("/reports/daily")
 @RequiredArgsConstructor
+// 读接口同样要挡角色：管理员不参与业务，不能靠 /page、/{id} 顺走全公司日报正文
+@RequireRole({RoleConstant.EMPLOYEE, RoleConstant.DEPT_LEADER, RoleConstant.EXECUTIVE})
 public class DailyReportController {
 
     private final DailyReportService dailyReportService;

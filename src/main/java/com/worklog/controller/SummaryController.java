@@ -75,10 +75,10 @@ public class SummaryController {
     /**
      * 成员日报明细（抽屉）：GET /api/summary/users/{userId}/daily?startDate=&endDate=
      *
-     * <p>只有部门负责人可以看本部门成员的个人明细；高管/管理员不越级。</p>
+     * <p>总裁监督权：高管可下钻查看任何人的明细；负责人仅限本部门；管理员不开放。</p>
      */
     @GetMapping("/users/{userId}/daily")
-    @RequireRole(RoleConstant.DEPT_LEADER)
+    @RequireRole({RoleConstant.EXECUTIVE, RoleConstant.DEPT_LEADER})
     public Result<List<SummaryDailyItemVO>> userDaily(
             @PathVariable Long userId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,
@@ -90,7 +90,7 @@ public class SummaryController {
      * 成员周报明细（抽屉的「周报」Tab）：GET /api/summary/users/{userId}/weekly
      */
     @GetMapping("/users/{userId}/weekly")
-    @RequireRole(RoleConstant.DEPT_LEADER)
+    @RequireRole({RoleConstant.EXECUTIVE, RoleConstant.DEPT_LEADER})
     public Result<List<SummaryWeeklyItemVO>> userWeekly(
             @PathVariable Long userId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd") LocalDate startDate,

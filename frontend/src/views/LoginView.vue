@@ -17,7 +17,7 @@
           <el-input
             v-model="form.username"
             size="large"
-            placeholder="Username"
+            placeholder="用户名"
             autocomplete="username"
             clearable
           />
@@ -28,7 +28,7 @@
             v-model="form.password"
             size="large"
             type="password"
-            placeholder="Password"
+            placeholder="密码"
             show-password
             autocomplete="current-password"
             @keyup.enter="handleSubmit"
@@ -42,7 +42,7 @@
           :loading="loading"
           @click="handleSubmit"
         >
-          {{ loading ? 'Signing in…' : 'Sign in' }}
+          {{ loading ? '登录中…' : '登 录' }}
         </el-button>
       </el-form>
 
@@ -92,10 +92,10 @@ const form = reactive({
 })
 
 const rules = {
-  username: [{ required: true, message: 'Username is required', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [
-    { required: true, message: 'Password is required', trigger: 'blur' },
-    { min: 6, max: 32, message: 'Password must be 6-32 characters', trigger: 'blur' }
+    { required: true, message: '请输入密码', trigger: 'blur' },
+    { min: 6, max: 32, message: '密码长度需为 6-32 位', trigger: 'blur' }
   ]
 }
 

@@ -5,9 +5,11 @@ import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.worklog.constant.RoleConstant;
 import com.worklog.entity.DailyReport;
 import com.worklog.entity.Project;
+import com.worklog.entity.ProjectMember;
 import com.worklog.entity.SysUser;
 import com.worklog.entity.WeeklyReport;
 import com.worklog.mapper.DailyReportMapper;
+import com.worklog.mapper.ProjectMemberMapper;
 import com.worklog.mapper.SysUserMapper;
 import com.worklog.mapper.WeeklyReportMapper;
 import com.worklog.security.LoginUser;
@@ -26,14 +28,15 @@ import java.util.stream.Collectors;
  *
  * <p>三类角色的可见范围：</p>
  * <ul>
- *   <li><b>ADMIN</b>：全部数据，不追加任何条件。</li>
+ *   <li><b>ADMIN</b>：只做系统配置，业务单据一律不可见（防泄密），组织架构（项目/人员名单）可见。</li>
  *   <li><b>DEPT_LEADER</b>：本部门全部项目 + 本人负责的项目（跨部门兼任场景）。</li>
- *   <li><b>EMPLOYEE</b>：本人负责的项目 + 本人填报过日报/周报的项目（即"参与过"）。</li>
+ *   <li><b>EMPLOYEE</b>：本人负责的项目 + 管理员在「用户管理」里给他分配的项目
+ *       + 本人填报过日报/周报的项目（兼容历史数据）。</li>
  * </ul>
  *
- * <p><b>为什么"参与"要用日报反查：</b>project 表只有 leader_id 与 dept_id，
- * 没有成员关系表，员工与项目的唯一客观关联就是他在这两个项目上填过的日报/周报。
- * 后续若引入 project_member 表，只需改本类 {@link #participatedProjectIds(Long)} 一处。</p>
+ * <p><b>参与关系从哪来：</b>project_member 表是权威来源（管理员分配）；
+ * 早期没有该表时，员工与项目的唯一关联是填过的日报/周报，因此这里两者取并集，
+ * 保证老数据不会因为补表而"丢项目"。
  *
  * <p>该过滤器必须只在 Service 层追加（Controller 不暴露 deptId 之外的绕过口），
  * 前端传参无法突破该范围。</p>
@@ -46,6 +49,7 @@ public class DataScopeService {
     private final DailyReportMapper dailyReportMapper;
     private final WeeklyReportMapper weeklyReportMapper;
     private final SysUserMapper sysUserMapper;
+    private final ProjectMemberMapper projectMemberMapper;
 
     /**
      * 给项目查询追加数据范围条件。
@@ -115,10 +119,19 @@ public class DataScopeService {
     }
 
     /**
-     * 本人"参与过"的项目ID集合：由日报/周报反查得出。
+     * 本人"参与过"的项目ID集合：project_member 分配的项目 ∪ 日报/周报里出现过的项目。
      */
     public Set<Long> participatedProjectIds(Long userId) {
         Set<Long> ids = new HashSet<>();
+
+        // 管理员在用户管理里显式分配的项目（权威来源）
+        projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
+                        .select(ProjectMember::getProjectId)
+                        .eq(ProjectMember::getUserId, userId))
+                .stream()
+                .map(ProjectMember::getProjectId)
+                .filter(Objects::nonNull)
+                .forEach(ids::add);
 
         dailyReportMapper.selectList(new LambdaQueryWrapper<DailyReport>()
                         .select(DailyReport::getProjectId)
@@ -162,7 +175,11 @@ public class DataScopeService {
      */
     public boolean canViewReportOf(Long ownerUserId) {
         LoginUser user = UserContext.require();
-        if (RoleConstant.isGlobal(user.role())) {
+        if (RoleConstant.ADMIN.equals(user.role())) {
+            // 与 README/角色定义一致：管理员没有任何业务单据的查看权
+            return false;
+        }
+        if (RoleConstant.EXECUTIVE.equals(user.role())) {
             return true;
         }
         if (Objects.equals(user.id(), ownerUserId)) {
@@ -181,8 +198,12 @@ public class DataScopeService {
         String role = user.role() == null ? "" : user.role();
 
         switch (role) {
-            case RoleConstant.ADMIN, RoleConstant.EXECUTIVE -> {
-                // 全局可见
+            case RoleConstant.EXECUTIVE -> {
+                // 高管全局可见
+            }
+            case RoleConstant.ADMIN -> {
+                // 管理员不看业务单据：即使接口漏挡，这里也只返回空集
+                wrapper.apply("1 = 0");
             }
             case RoleConstant.DEPT_LEADER -> {
                 Set<Long> memberIds = deptMemberIds(user.deptId());

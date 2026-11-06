@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.worklog.common.ResultCode;
 import com.worklog.common.exception.BusinessException;
+import com.worklog.constant.AuditAction;
 import com.worklog.dto.DeptSaveRequest;
 import com.worklog.entity.SysDept;
 import com.worklog.entity.SysUser;
 import com.worklog.mapper.SysDeptMapper;
 import com.worklog.mapper.SysUserMapper;
+import com.worklog.service.AuditService;
 import com.worklog.service.DeptService;
 import com.worklog.vo.DeptTreeVO;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +37,7 @@ public class DeptServiceImpl implements DeptService {
 
     private final SysDeptMapper sysDeptMapper;
     private final SysUserMapper sysUserMapper;
+    private final AuditService auditService;
 
     /** 顶级部门的 parent_id 约定值 */
     private static final long ROOT_PARENT_ID = 0L;
@@ -106,6 +109,8 @@ public class DeptServiceImpl implements DeptService {
         sysDeptMapper.insert(dept);
 
         log.info("新增部门：id={}, name={}, parentId={}", dept.getId(), dept.getDeptName(), parentId);
+        auditService.record(AuditAction.CREATE_DEPT, "DEPT", dept.getId(),
+                "新增部门「" + dept.getDeptName() + "」" + (parentId == ROOT_PARENT_ID ? "（顶级）" : "（上级ID " + parentId + "）"));
         return toVO(dept, 0L);
     }
 
@@ -132,6 +137,8 @@ public class DeptServiceImpl implements DeptService {
         sysDeptMapper.updateById(dept);
 
         log.info("编辑部门：id={}, name={}, parentId={}", id, dept.getDeptName(), parentId);
+        auditService.record(AuditAction.UPDATE_DEPT, "DEPT", id,
+                "编辑部门「" + dept.getDeptName() + "」，上级ID " + parentId + "，排序 " + dept.getSortOrder());
         return toVO(dept, countUsers(id));
     }
 

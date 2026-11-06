@@ -1,10 +1,8 @@
 <template>
   <aside class="sidebar" :class="{ 'is-collapsed': collapsed }">
     <div class="sidebar__brand">
-      <transition name="fade" mode="out-in">
-        <span v-if="!collapsed" key="word" class="brand-word">Worklog</span>
-        <span v-else key="mark" class="brand-w" aria-label="Worklog">W</span>
-      </transition>
+      <span class="brand-word" :class="{ 'is-hidden': collapsed }">Worklog</span>
+      <span class="brand-w" :class="{ 'is-hidden': !collapsed }" aria-label="Worklog">W</span>
     </div>
 
     <nav class="sidebar__nav">
@@ -26,17 +24,13 @@
           <el-icon class="nav-item__icon">
             <component :is="item.icon" />
           </el-icon>
-          <transition name="fade">
-            <span v-if="!collapsed" class="nav-item__label">{{ item.label }}</span>
-          </transition>
+          <span class="nav-item__label" :class="{ 'is-hidden': collapsed }">{{ item.label }}</span>
         </router-link>
       </el-tooltip>
     </nav>
 
     <footer class="sidebar__foot">
-      <transition name="fade">
-        <span v-if="!collapsed" class="version">v1.0 · MVP</span>
-      </transition>
+      <span class="version" :class="{ 'is-hidden': collapsed }">v1.0 · MVP</span>
     </footer>
   </aside>
 </template>
@@ -114,7 +108,7 @@ const navItems = computed(() => {
   line-height: 1;
   color: #1a1d20;
   white-space: nowrap;
-  transition: opacity 0.24s var(--wl-ease);
+  transition: var(--wl-motion);
 }
 
 /* 折叠态：纯黑圆角方块 + 白色 W */
@@ -132,7 +126,17 @@ const navItems = computed(() => {
   font-size: 15px;
   line-height: 1;
   letter-spacing: 0;
-  transition: transform 0.42s var(--wl-spring);
+  transition: var(--wl-motion);
+}
+
+/* 折叠/展开：文字与方块互相淡出淡入，不硬切 */
+.is-hidden {
+  display: inline-block;
+  width: 0;
+  opacity: 0;
+  transform: translateX(-6px);
+  pointer-events: none;
+  overflow: hidden;
 }
 
 .sidebar.is-collapsed .sidebar__brand {

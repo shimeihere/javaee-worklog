@@ -59,8 +59,8 @@ function toggleSidebar() {
 .page-fade-enter-active,
 .page-fade-leave-active {
   transition:
-    opacity 0.3s var(--wl-spring),
-    transform 0.3s var(--wl-spring);
+    opacity 0.2s var(--wl-spring),
+    transform 0.2s var(--wl-spring);
 }
 
 .page-fade-enter-from {

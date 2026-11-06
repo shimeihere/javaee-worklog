@@ -5,10 +5,12 @@ import com.worklog.constant.ReportConstant;
 import com.worklog.constant.RoleConstant;
 import com.worklog.entity.DailyReport;
 import com.worklog.entity.Project;
+import com.worklog.entity.SysDept;
 import com.worklog.entity.SysMessage;
 import com.worklog.entity.SysUser;
 import com.worklog.mapper.DailyReportMapper;
 import com.worklog.mapper.ProjectMapper;
+import com.worklog.mapper.SysDeptMapper;
 import com.worklog.mapper.SysMessageMapper;
 import com.worklog.mapper.SysUserMapper;
 import com.worklog.security.LoginUser;
@@ -37,7 +39,7 @@ import java.util.stream.Collectors;
  * <ul>
  *   <li>提交率分母 = 周期内"已过去的工作日（含今天）"，不惩罚未来日期；</li>
  *   <li>周末不计入应提交天数（与日历页规则保持一致）；</li>
- *   <li>团队指标仅 ADMIN（全公司）与 DEPT_LEADER（本部门）返回。</li>
+ *   <li>团队指标仅 EXECUTIVE（全公司）与 DEPT_LEADER（本部门）返回；管理员只拿系统指标。</li>
  * </ul>
  */
 @Slf4j
@@ -49,6 +51,7 @@ public class DashboardServiceImpl implements DashboardService {
     private final SysMessageMapper sysMessageMapper;
     private final ProjectMapper projectMapper;
     private final SysUserMapper sysUserMapper;
+    private final SysDeptMapper sysDeptMapper;
     private final DataScopeService dataScopeService;
 
     @Override
@@ -91,8 +94,59 @@ public class DashboardServiceImpl implements DashboardService {
         if (RoleConstant.ADMIN.equals(me.role())) {
             summary.setSystemTotalUsers(sysUserMapper.selectCount(null));
             summary.setTodayActiveUsers(countActiveToday(today));
+            // 部门数不含根节点（"周览科技"本身不算一个部门），项目数不按数据范围切
+            summary.setDeptCount(sysDeptMapper.selectCount(new LambdaQueryWrapper<SysDept>()
+                    .gt(SysDept::getParentId, 0)));
+            summary.setCompanyProjectCount(projectMapper.selectCount(null));
+        }
+
+        // 部门负责人：本周"应提交未提交"的人次，就是工作台上的待提醒名单
+        if (RoleConstant.DEPT_LEADER.equals(me.role()) && me.deptId() != null) {
+            Set<Long> memberIds = sysUserMapper.selectList(new LambdaQueryWrapper<SysUser>()
+                            .select(SysUser::getId)
+                            .eq(SysUser::getDeptId, me.deptId()))
+                    .stream().map(SysUser::getId)
+                    .filter(id -> !id.equals(me.id()))
+                    .collect(Collectors.toSet());
+            summary.setRemindCount(missingPersonDays(memberIds, today));
+        }
+
+        // 高管：全公司本周未提交人次，以及与昨日相比的变化
+        if (RoleConstant.EXECUTIVE.equals(me.role())) {
+            long current = missingCompanyPersonDays(today);
+            long yesterday = missingCompanyPersonDays(today.minusDays(1));
+            summary.setOverdueCount(current);
+            summary.setOverdueDelta(current - yesterday);
         }
         return summary;
+    }
+
+    /** 指定成员在"本周一 ~ 今天"应提交而未提交的人次 */
+    private long missingPersonDays(Set<Long> memberIds, LocalDate today) {
+        if (memberIds.isEmpty()) {
+            return 0;
+        }
+        LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        long expected = (long) memberIds.size() * countWorkdays(monday, today);
+        long submitted = dailyReportMapper.selectCount(new LambdaQueryWrapper<DailyReport>()
+                .eq(DailyReport::getStatus, ReportConstant.STATUS_SUBMITTED)
+                .between(DailyReport::getReportDate, monday, today)
+                .in(DailyReport::getUserId, memberIds));
+        return Math.max(expected - submitted, 0);
+    }
+
+    /** 全公司在"本周一 ~ 指定日期"应提交而未提交的人次 */
+    private long missingCompanyPersonDays(LocalDate until) {
+        long users = sysUserMapper.selectCount(null);
+        if (users <= 0) {
+            return 0;
+        }
+        LocalDate monday = until.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        long expected = users * countWorkdays(monday, until);
+        long submitted = dailyReportMapper.selectCount(new LambdaQueryWrapper<DailyReport>()
+                .eq(DailyReport::getStatus, ReportConstant.STATUS_SUBMITTED)
+                .between(DailyReport::getReportDate, monday, until));
+        return Math.max(expected - submitted, 0);
     }
 
     /** 今日活跃：今天有填报记录（含草稿）的人数 */
@@ -141,8 +195,12 @@ public class DashboardServiceImpl implements DashboardService {
     }
 
     private TeamDashboardVO buildTeam(LoginUser me, LocalDate today) {
-        // 高管 / 管理员看全公司；部门负责看本部门；员工无团队指标
-        boolean global = RoleConstant.isGlobal(me.role());
+        // 管理员只做系统运维，不下发任何业务口径（防泄密）
+        if (RoleConstant.ADMIN.equals(me.role())) {
+            return null;
+        }
+        // 高管看全公司；部门负责看本部门；员工无团队指标
+        boolean global = RoleConstant.EXECUTIVE.equals(me.role());
         if (!global && !RoleConstant.DEPT_LEADER.equals(me.role())) {
             return null;
         }

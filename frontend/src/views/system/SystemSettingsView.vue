@@ -95,21 +95,36 @@
           </div>
 
           <el-table v-loading="userLoading" :data="users" class="table">
-            <el-table-column prop="realName" label="姓名" min-width="120" />
+            <el-table-column label="姓名" min-width="150">
+              <template #default="{ row }">
+                <span class="user-name">{{ row.realName }}</span>
+                <span v-if="row.status === 1" class="status is-off">已禁用</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="username" label="账号" min-width="130" />
             <el-table-column prop="roleName" label="角色" width="130" />
             <el-table-column prop="deptName" label="部门" min-width="150" />
-            <el-table-column label="启用状态" width="140" align="center">
+            <el-table-column label="参与项目" min-width="200">
               <template #default="{ row }">
-                <el-switch
-                  :model-value="row.status === 0"
-                  :loading="statusUpdating === row.id"
-                  inline-prompt
-                  active-text="启用"
-                  inactive-text="禁用"
-                  :before-change="() => confirmToggleUser(row)"
-                  @change="(value) => applyToggleUser(row, value)"
-                />
+                <span v-if="!row.projectNames?.length" class="muted">—</span>
+                <span v-else class="proj-tags">
+                  <el-tag
+                    v-for="name in row.projectNames.slice(0, 2)"
+                    :key="name"
+                    size="small"
+                    effect="plain"
+                  >
+                    {{ name }}
+                  </el-tag>
+                  <span v-if="row.projectNames.length > 2" class="proj-more">
+                    +{{ row.projectNames.length - 2 }}
+                  </span>
+                </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="80" align="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEditUser(row)">编辑</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -145,11 +160,27 @@
             </el-table-column>
             <el-table-column prop="leaderName" label="负责人" width="120" />
             <el-table-column prop="deptName" label="所属部门" min-width="140" />
+            <el-table-column label="周期" width="170">
+              <template #default="{ row }">
+                <span v-if="row.plannedEndDate" :class="{ 'cycle-overdue': row.overdue }">
+                  第 {{ row.elapsedDays }} / {{ row.plannedDays }} 天
+                  <template v-if="row.overdue">· 超期 {{ -row.remainingDays }} 天</template>
+                  <template v-else>· 剩 {{ row.remainingDays }} 天</template>
+                </span>
+                <span v-else class="muted">已进行 {{ row.elapsedDays }} 天</span>
+              </template>
+            </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <span class="status" :class="row.status === 0 ? 'is-on' : 'is-off'">
                   {{ row.status === 0 ? '进行中' : '已归档' }}
                 </span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" align="right">
+              <template #default="{ row }">
+                <el-button link type="primary" @click="openEditProject(row)">编辑</el-button>
+                <el-button link type="primary" @click="openLeaderDialog(row)">改负责人</el-button>
               </template>
             </el-table-column>
           </el-table>
@@ -164,6 +195,64 @@
               background
               @current-change="loadProjects"
               @size-change="onProjectSizeChange"
+            />
+          </footer>
+        </el-tab-pane>
+
+        <!-- ================= 审计日志 ================= -->
+        <el-tab-pane label="审计日志" name="audit">
+          <div class="pane-head">
+            <div class="pane-filters">
+              <el-select
+                v-model="auditQuery.action"
+                class="filter"
+                placeholder="全部动作"
+                clearable
+                @change="searchAudit"
+              >
+                <el-option
+                  v-for="item in auditActions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+              <el-input
+                v-model="auditQuery.keyword"
+                class="filter filter--kw"
+                placeholder="操作人或明细"
+                clearable
+                :prefix-icon="Search"
+                @keyup.enter="searchAudit"
+              />
+              <el-button @click="searchAudit">查询</el-button>
+            </div>
+            <span class="pane-head__hint">只记录管理动作，不包含日报周报正文</span>
+          </div>
+
+          <el-table v-loading="auditLoading" :data="auditLogs" class="table">
+            <el-table-column prop="createTime" label="时间" width="170">
+              <template #default="{ row }">{{ formatTime(row.createTime) }}</template>
+            </el-table-column>
+            <el-table-column prop="operatorName" label="操作人" width="110" />
+            <el-table-column label="动作" width="140">
+              <template #default="{ row }">
+                <span class="status is-on">{{ row.actionName }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="detail" label="明细" min-width="380" show-overflow-tooltip />
+          </el-table>
+
+          <footer class="foot">
+            <el-pagination
+              v-model:current-page="auditQuery.page"
+              v-model:page-size="auditQuery.size"
+              :total="auditTotal"
+              :page-sizes="[20, 50, 100]"
+              layout="total, sizes, prev, pager, next"
+              background
+              @current-change="loadAudit"
+              @size-change="onAuditSizeChange"
             />
           </footer>
         </el-tab-pane>
@@ -230,6 +319,15 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="计划完成日期">
+          <el-date-picker
+            v-model="projectForm.plannedEndDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            class="fill"
+            placeholder="选填；填了才能算项目周期进度"
+          />
+        </el-form-item>
         <el-form-item label="项目描述">
           <el-input
             v-model="projectForm.description"
@@ -248,34 +346,188 @@
       </template>
     </el-dialog>
 
-    <!-- 新增用户弹窗 -->
-    <el-dialog v-model="userDialogVisible" title="新增用户" width="480px" append-to-body>
-      <el-form :model="userForm" label-position="top">
-        <el-form-item label="登录账号" required>
-          <el-input v-model="userForm.username" maxlength="50" placeholder="例如：zhangsan" />
-        </el-form-item>
-        <el-form-item label="初始密码" required>
-          <el-input
-            v-model="userForm.password"
-            type="password"
-            show-password
-            maxlength="32"
-            placeholder="6-32 位，创建后请告知本人"
-          />
+    <!-- 新增用户弹窗：单个 / 批量 -->
+    <el-dialog
+      v-model="userDialogVisible"
+      title="新增用户"
+      width="580px"
+      append-to-body
+      @closed="resetUserDialog"
+    >
+      <el-tabs v-model="userDialogTab" class="inner-tabs">
+        <el-tab-pane label="单个新增" name="single">
+          <el-form :model="userForm" label-position="top">
+            <el-form-item label="登录账号" required>
+              <el-input v-model="userForm.username" maxlength="50" placeholder="例如：zhangsan" />
+            </el-form-item>
+            <el-form-item label="初始密码" required>
+              <el-input
+                v-model="userForm.password"
+                type="password"
+                show-password
+                maxlength="32"
+                placeholder="6-32 位，创建后请告知本人"
+              />
+            </el-form-item>
+            <el-form-item label="真实姓名" required>
+              <el-input v-model="userForm.realName" maxlength="50" placeholder="例如：张三" />
+            </el-form-item>
+            <el-form-item label="角色" required>
+              <el-select v-model="userForm.role" class="fill">
+                <el-option
+                  v-for="item in roleOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="所属部门" required>
+              <el-select v-model="userForm.deptId" class="fill" placeholder="选择部门">
+                <el-option
+                  v-for="dept in allDeptOptions"
+                  :key="dept.id"
+                  :label="dept.deptName"
+                  :value="dept.id"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <el-tab-pane label="批量新增" name="batch">
+          <el-form label-position="top">
+            <div class="batch-grid">
+              <el-form-item label="统一初始密码" required>
+                <el-input
+                  v-model="batchForm.password"
+                  type="password"
+                  show-password
+                  maxlength="32"
+                  placeholder="6-32 位，本批共用"
+                />
+              </el-form-item>
+              <el-form-item label="默认角色">
+                <el-select v-model="batchForm.role" class="fill">
+                  <el-option
+                    v-for="item in roleOptions"
+                    :key="item.value"
+                    :label="item.label"
+                    :value="item.value"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="默认部门">
+                <el-select v-model="batchForm.deptId" class="fill" placeholder="选择部门">
+                  <el-option
+                    v-for="dept in allDeptOptions"
+                    :key="dept.id"
+                    :label="dept.deptName"
+                    :value="dept.id"
+                  />
+                </el-select>
+              </el-form-item>
+            </div>
+
+            <el-form-item label="账号名单（每行一个）">
+              <el-input
+                v-model="batchForm.text"
+                type="textarea"
+                :rows="7"
+                placeholder="wangwu,王五&#10;lisi,李四,部门负责人,技术中心&#10;zhaoliu,赵六,员工,产品设计部"
+              />
+            </el-form-item>
+            <p class="batch-hint">
+              每行：账号,姓名[,角色][,部门]，逗号 / Tab / 空格分隔；角色和部门留空就用上面的默认值。
+              可以直接从 Excel 复制两列粘贴进来。
+            </p>
+
+            <div v-if="batchRows.length" class="batch-preview">
+              <div class="batch-preview__head">
+                预览 {{ batchRows.length }} 行
+                <em v-if="batchInvalidCount">，其中 {{ batchInvalidCount }} 行需要修改</em>
+                <span v-else>，全部可提交</span>
+              </div>
+              <ul>
+                <li
+                  v-for="(row, index) in batchRows"
+                  :key="index"
+                  :class="{ 'is-bad': row.error }"
+                >
+                  <span class="batch-preview__no">{{ index + 1 }}</span>
+                  <b>{{ row.username || '—' }}</b>
+                  <span class="batch-preview__name">{{ row.realName || '—' }}</span>
+                  <span class="batch-preview__meta">{{ row.roleLabel }} · {{ row.deptLabel }}</span>
+                  <em v-if="row.error">{{ row.error }}</em>
+                </li>
+              </ul>
+            </div>
+          </el-form>
+        </el-tab-pane>
+      </el-tabs>
+
+      <template #footer>
+        <el-button @click="userDialogVisible = false">取消</el-button>
+        <el-button
+          v-if="userDialogTab === 'single'"
+          type="primary"
+          :loading="userSaving"
+          @click="saveUser"
+        >
+          创建
+        </el-button>
+        <el-button
+          v-else
+          type="primary"
+          :loading="batchSaving"
+          :disabled="!batchRows.length"
+          @click="saveBatchUsers"
+        >
+          批量创建
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑用户：调部门 / 改角色 / 加项目 -->
+    <el-dialog v-model="editDialogVisible" title="编辑用户" width="520px" append-to-body>
+      <el-form :model="editForm" label-position="top">
+        <el-form-item label="登录账号">
+          <el-input :model-value="editForm.username" disabled />
         </el-form-item>
         <el-form-item label="真实姓名" required>
-          <el-input v-model="userForm.realName" maxlength="50" placeholder="例如：张三" />
+          <el-input v-model="editForm.realName" maxlength="50" placeholder="例如：张三" />
         </el-form-item>
         <el-form-item label="角色" required>
-          <el-select v-model="userForm.role" class="fill">
-            <el-option label="员工" value="EMPLOYEE" />
-            <el-option label="部门负责人" value="DEPT_LEADER" />
-            <el-option label="高管" value="EXECUTIVE" />
-            <el-option label="管理员" value="ADMIN" />
+          <el-select v-model="editForm.role" class="fill" :disabled="editForm.id === currentUserId">
+            <el-option
+              v-for="item in roleOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            />
           </el-select>
+          <p v-if="editForm.id === currentUserId" class="batch-hint">
+            不能修改自己的角色，避免把自己降权后系统没人管理。
+          </p>
+        </el-form-item>
+        <el-form-item label="账号状态">
+          <div class="status-row">
+            <el-switch
+              v-model="editForm.status"
+              :active-value="0"
+              :inactive-value="1"
+              inline-prompt
+              active-text="启用"
+              inactive-text="禁用"
+              :disabled="editForm.id === currentUserId"
+            />
+            <span class="status-row__hint">
+              {{ editForm.status === 0 ? '可正常登录、填报日报周报' : '不能登录，历史日报与项目关系都保留' }}
+            </span>
+          </div>
         </el-form-item>
         <el-form-item label="所属部门" required>
-          <el-select v-model="userForm.deptId" class="fill" placeholder="选择部门">
+          <el-select v-model="editForm.deptId" class="fill" placeholder="选择部门">
             <el-option
               v-for="dept in allDeptOptions"
               :key="dept.id"
@@ -284,11 +536,105 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="参与项目">
+          <el-select
+            v-model="editForm.projectIds"
+            class="fill"
+            multiple
+            filterable
+            collapse-tags
+            collapse-tags-tooltip
+            placeholder="不选表示不参与任何项目"
+          >
+            <el-option
+              v-for="project in allProjects"
+              :key="project.id"
+              :label="project.projectName"
+              :value="project.id"
+            />
+          </el-select>
+          <p class="batch-hint">
+            加到项目后，该员工填报日报时就能选到这个项目，项目成员名单里也会出现他。
+          </p>
+        </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="userDialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="userSaving" @click="saveUser">创建</el-button>
+        <el-button @click="editDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="saveEditUser">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑项目：改名称 / 描述 / 归档 -->
+    <el-dialog v-model="projectEditVisible" title="编辑项目" width="480px" append-to-body>
+      <el-form :model="projectEditForm" label-position="top">
+        <el-form-item label="项目名称" required>
+          <el-input v-model="projectEditForm.projectName" maxlength="100" />
+        </el-form-item>
+
+        <el-form-item label="项目状态">
+          <el-radio-group v-model="projectEditForm.status" class="seg">
+            <el-radio-button :value="0">进行中</el-radio-button>
+            <el-radio-button :value="1">已归档</el-radio-button>
+          </el-radio-group>
+          <p class="batch-hint">归档后仍保留历史日报与成员关系，只是不再出现在「进行中」的视角里。</p>
+        </el-form-item>
+
+        <el-form-item label="计划完成日期">
+          <el-date-picker
+            v-model="projectEditForm.plannedEndDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            class="fill"
+            placeholder="选填；填了才能算项目周期进度"
+          />
+        </el-form-item>
+
+        <el-form-item label="项目描述">
+          <el-input
+            v-model="projectEditForm.description"
+            type="textarea"
+            :rows="3"
+            maxlength="500"
+            show-word-limit
+            placeholder="一句话说明项目目标"
+          />
+        </el-form-item>
+      </el-form>
+
+      <template #footer>
+        <el-button @click="projectEditVisible = false">取消</el-button>
+        <el-button type="primary" :loading="projectEditSaving" @click="saveProjectEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 变更项目负责人 -->
+    <el-dialog
+      v-model="leaderDialogVisible"
+      title="变更项目负责人"
+      width="420px"
+      align-center
+      class="roster-dialog"
+      append-to-body
+    >
+      <p class="leader-hint">
+        项目：<b>{{ leaderTarget?.projectName }}</b>
+        <br />
+        变更后会分别给新旧负责人各发一条系统通知。
+      </p>
+
+      <el-select v-model="leaderValue" class="fill" placeholder="选择新的负责人" filterable>
+        <el-option
+          v-for="item in leaderChoices"
+          :key="item.id"
+          :label="`${item.realName}（${item.deptName || '未分配'}）`"
+          :value="item.id"
+        />
+      </el-select>
+
+      <template #footer>
+        <el-button @click="leaderDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="leaderSaving" @click="saveLeader">确认变更</el-button>
       </template>
     </el-dialog>
 
@@ -303,20 +649,48 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Lock, Plus, Search } from '@element-plus/icons-vue'
 import MemberRosterDialog from '@/components/common/MemberRosterDialog.vue'
 import { createDept, getDeptMembers, getDeptTree, updateDept } from '@/api/dept'
-import { createProject, getProjectMembers, listProjects } from '@/api/project'
-import { createUser, getUsers, updateUserStatus } from '@/api/user'
+import {
+  changeProjectLeader,
+  createProject,
+  getProjectMembers,
+  listProjects,
+  updateProject
+} from '@/api/project'
+import { batchCreateUsers, createUser, getUsers, updateUser, updateUserStatus } from '@/api/user'
+import { getAuditLogs } from '@/api/audit'
 import { getUser } from '@/utils/auth'
 
+const route = useRoute()
 const router = useRouter()
 const isAdmin = computed(() => getUser()?.role === 'ADMIN')
 
-const tab = ref('dept')
+/** 支持 /system?tab=user|project|audit 直接落到对应页签（工作台快捷入口用） */
+const TABS = ['dept', 'user', 'project', 'audit']
+const tab = ref(TABS.includes(route.query.tab) ? route.query.tab : 'dept')
+
+watch(
+  () => route.query.tab,
+  (value) => {
+    if (TABS.includes(value)) {
+      tab.value = value
+    }
+  }
+)
+
+const currentUserId = getUser()?.id ?? null
+const roleOptions = [
+  { value: 'EMPLOYEE', label: '员工' },
+  { value: 'DEPT_LEADER', label: '部门负责人' },
+  { value: 'EXECUTIVE', label: '高管' },
+  { value: 'ADMIN', label: '管理员' }
+]
+const roleLabel = (code) => roleOptions.find((item) => item.value === code)?.label || '—'
 
 /* ---------------- 部门 ---------------- */
 const deptTree = ref([])
@@ -377,6 +751,87 @@ const rosterVisible = ref(false)
 const rosterTitle = ref('成员名单')
 const rosterMembers = ref([])
 const rosterLoading = ref(false)
+
+/* ---------------- 变更项目负责人 ---------------- */
+const leaderDialogVisible = ref(false)
+const leaderTarget = ref(null)
+const leaderValue = ref(null)
+const leaderChoices = ref([])
+const leaderSaving = ref(false)
+
+/* ---------------- 编辑项目：名称 / 描述 / 归档 ---------------- */
+const projectEditVisible = ref(false)
+const projectEditSaving = ref(false)
+const projectEditForm = reactive({
+  id: null,
+  projectName: '',
+  description: '',
+  status: 0,
+  plannedEndDate: null
+})
+
+function openEditProject(row) {
+  projectEditForm.id = row.id
+  projectEditForm.projectName = row.projectName || ''
+  projectEditForm.description = row.description || ''
+  projectEditForm.status = row.status ?? 0
+  projectEditForm.plannedEndDate = row.plannedEndDate || null
+  projectEditVisible.value = true
+}
+
+async function saveProjectEdit() {
+  if (!projectEditForm.projectName?.trim()) {
+    ElMessage.warning('请填写项目名称')
+    return
+  }
+  projectEditSaving.value = true
+  try {
+    await updateProject(projectEditForm.id, {
+      projectName: projectEditForm.projectName.trim(),
+      description: projectEditForm.description?.trim() || '',
+      status: projectEditForm.status,
+      plannedEndDate: projectEditForm.plannedEndDate || null
+    })
+    ElMessage.success('项目已更新')
+    projectEditVisible.value = false
+    await Promise.all([loadProjects(), loadProjectOptions()])
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    projectEditSaving.value = false
+  }
+}
+
+async function openLeaderDialog(row) {
+  leaderTarget.value = row
+  leaderValue.value = row.leaderId ?? null
+  leaderDialogVisible.value = true
+  if (leaderChoices.value.length) return
+  try {
+    const res = await getUsers({ page: 1, size: 100 })
+    leaderChoices.value = res.data?.records || []
+  } catch {
+    leaderChoices.value = []
+  }
+}
+
+async function saveLeader() {
+  if (!leaderValue.value) {
+    ElMessage.warning('请选择新的负责人')
+    return
+  }
+  leaderSaving.value = true
+  try {
+    await changeProjectLeader(leaderTarget.value.id, leaderValue.value)
+    ElMessage.success('负责人已变更，已通知新旧负责人')
+    leaderDialogVisible.value = false
+    loadProjects()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    leaderSaving.value = false
+  }
+}
 
 async function openProjectRoster(row) {
   rosterTitle.value = `${row.projectName} · 成员名单`
@@ -478,38 +933,9 @@ function onUserSizeChange() {
   loadUsers()
 }
 
-/* 状态开关：先二次确认，确认后调接口并刷新 */
-const statusUpdating = ref(null)
-
-async function confirmToggleUser(row) {
-  const action = row.status === 0 ? '禁用' : '启用'
-  try {
-    await ElMessageBox.confirm(
-      `确定${action}「${row.realName}」吗？`,
-      `${action}账号`,
-      { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' }
-    )
-    return true
-  } catch {
-    return false
-  }
-}
-
-async function applyToggleUser(row, enabled) {
-  statusUpdating.value = row.id
-  try {
-    const res = await updateUserStatus(row.id, enabled ? 0 : 1)
-    ElMessage.success(res.message || '操作成功')
-    await loadUsers()
-  } catch {
-    /* 拦截器已提示 */
-  } finally {
-    statusUpdating.value = null
-  }
-}
-
-/* ---------------- 新增用户 ---------------- */
+/* ---------------- 用户：单个 / 批量新增 ---------------- */
 const userDialogVisible = ref(false)
+const userDialogTab = ref('single')
 const userSaving = ref(false)
 const userForm = reactive({
   username: '',
@@ -531,13 +957,36 @@ const allDeptOptions = computed(() => {
   return list
 })
 
+/** 批量导入时用短名匹配部门（粘贴的是"技术中心"，不是"周览科技 / 技术中心"） */
+const deptNameMap = computed(() => {
+  const map = new Map()
+  deptTree.value.forEach((root) => {
+    map.set(root.deptName, root.id)
+    ;(root.children || []).forEach((child) => map.set(child.deptName, child.id))
+  })
+  return map
+})
+
+const deptLabelMap = computed(() => new Map(allDeptOptions.value.map((item) => [item.id, item.deptName])))
+
+function defaultDeptId() {
+  return allDeptOptions.value[1]?.id ?? allDeptOptions.value[0]?.id ?? null
+}
+
 function openCreateUser() {
   userForm.username = ''
   userForm.password = ''
   userForm.realName = ''
   userForm.role = 'EMPLOYEE'
-  userForm.deptId = allDeptOptions.value[1]?.id ?? allDeptOptions.value[0]?.id ?? null
+  userForm.deptId = defaultDeptId()
+  userDialogTab.value = 'single'
+  resetBatchForm()
   userDialogVisible.value = true
+}
+
+function resetUserDialog() {
+  resetBatchForm()
+  userDialogTab.value = 'single'
 }
 
 async function saveUser() {
@@ -577,6 +1026,243 @@ async function saveUser() {
   }
 }
 
+/* ---------------- 批量新增：一行一个人，支持从 Excel 粘贴 ---------------- */
+const ROLE_ALIAS = {
+  EMPLOYEE: 'EMPLOYEE',
+  DEPT_LEADER: 'DEPT_LEADER',
+  EXECUTIVE: 'EXECUTIVE',
+  ADMIN: 'ADMIN',
+  员工: 'EMPLOYEE',
+  负责人: 'DEPT_LEADER',
+  部门负责人: 'DEPT_LEADER',
+  高管: 'EXECUTIVE',
+  管理员: 'ADMIN'
+}
+
+const batchSaving = ref(false)
+const batchForm = reactive({ password: '', role: 'EMPLOYEE', deptId: null, text: '' })
+
+function resetBatchForm() {
+  batchForm.password = ''
+  batchForm.role = 'EMPLOYEE'
+  batchForm.deptId = defaultDeptId()
+  batchForm.text = ''
+}
+
+/**
+ * 解析粘贴的名单。
+ * 每行：账号,姓名[,角色][,部门]，分隔符支持中英文逗号、Tab、空格；
+ * 角色/部门没写的行，回落到弹窗顶部的默认值。
+ */
+const batchRows = computed(() => {
+  const lines = (batchForm.text || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+
+  return lines.map((line) => {
+    const parts = line.split(/[\s,，、;；]+/).filter(Boolean)
+    const row = {
+      username: '',
+      realName: '',
+      role: batchForm.role,
+      deptId: batchForm.deptId,
+      error: ''
+    }
+
+    if (parts.length < 2) {
+      row.username = parts[0] || ''
+      row.error = '至少要有「账号 姓名」两列'
+    } else {
+      row.username = parts[0]
+      row.realName = parts[1]
+      parts.slice(2).forEach((token) => {
+        const role = ROLE_ALIAS[token] || ROLE_ALIAS[token.toUpperCase()]
+        if (role) {
+          row.role = role
+          return
+        }
+        const deptId = deptNameMap.value.get(token)
+        if (deptId) {
+          row.deptId = deptId
+          return
+        }
+        row.error = row.error || `无法识别「${token}」`
+      })
+    }
+
+    if (!row.error && !row.deptId) row.error = '没有可用的部门'
+    if (!row.error && !row.role) row.error = '没有可用的角色'
+    row.roleLabel = roleLabel(row.role)
+    row.deptLabel = row.deptId ? deptLabelMap.value.get(row.deptId) || '—' : '—'
+    return row
+  })
+})
+
+const batchInvalidCount = computed(() => batchRows.value.filter((row) => row.error).length)
+
+const escapeHtml = (text) =>
+  String(text).replace(/[&<>"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[char])
+
+async function saveBatchUsers() {
+  if (!batchForm.password || batchForm.password.length < 6) {
+    ElMessage.warning('统一初始密码至少 6 位')
+    return
+  }
+  if (!batchRows.value.length) {
+    ElMessage.warning('请先粘贴账号名单')
+    return
+  }
+  if (batchInvalidCount.value > 0) {
+    ElMessage.warning('预览里有 ' + batchInvalidCount.value + ' 行需要修改')
+    return
+  }
+
+  batchSaving.value = true
+  try {
+    const res = await batchCreateUsers({
+      password: batchForm.password,
+      users: batchRows.value.map((row) => ({
+        username: row.username,
+        realName: row.realName,
+        role: row.role,
+        deptId: row.deptId
+      }))
+    })
+
+    const data = res.data || {}
+    if (data.failedCount) {
+      await ElMessageBox.alert(
+        `<div style="line-height:1.9;max-height:260px;overflow:auto">${
+          (data.failures || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('')
+        }</div>`,
+        `成功 ${data.createdCount} 个，失败 ${data.failedCount} 个`,
+        { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' }
+      )
+    } else {
+      ElMessage.success(res.message || `已批量创建 ${data.createdCount} 个用户`)
+      userDialogVisible.value = false
+    }
+    await loadUsers()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    batchSaving.value = false
+  }
+}
+
+/* ---------------- 编辑用户：调部门 / 改角色 / 加项目 ---------------- */
+const editDialogVisible = ref(false)
+const editSaving = ref(false)
+const editForm = reactive({
+  id: null,
+  username: '',
+  realName: '',
+  role: 'EMPLOYEE',
+  deptId: null,
+  projectIds: [],
+  status: 0,
+  /** 打开弹窗时的原状态，用来判断是否真的要调启用/禁用接口 */
+  originStatus: 0
+})
+
+function openEditUser(row) {
+  editForm.id = row.id
+  editForm.username = row.username
+  editForm.realName = row.realName || ''
+  editForm.role = row.role || 'EMPLOYEE'
+  editForm.deptId = row.deptId ?? null
+  editForm.projectIds = [...(row.projectIds || [])]
+  editForm.status = row.status ?? 0
+  editForm.originStatus = editForm.status
+  editDialogVisible.value = true
+}
+
+async function saveEditUser() {
+  if (!editForm.realName?.trim()) {
+    ElMessage.warning('请填写真实姓名')
+    return
+  }
+  if (!editForm.deptId) {
+    ElMessage.warning('请选择所属部门')
+    return
+  }
+
+  editSaving.value = true
+  try {
+    await updateUser(editForm.id, {
+      realName: editForm.realName.trim(),
+      role: editForm.role,
+      deptId: editForm.deptId,
+      projectIds: editForm.projectIds
+    })
+
+    // 账号状态走原来的接口：保留"最后一个管理员不能禁用""有草稿会提醒"这些保护
+    if (editForm.status !== editForm.originStatus) {
+      const res = await updateUserStatus(editForm.id, editForm.status)
+      ElMessage.success(res.message || '账号状态已更新')
+    } else {
+      ElMessage.success('用户已更新')
+    }
+
+    editDialogVisible.value = false
+    await loadUsers()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    editSaving.value = false
+  }
+}
+
+/* ---------------- 审计日志 ---------------- */
+const auditActions = [
+  { value: 'CREATE_USER', label: '新增用户' },
+  { value: 'BATCH_CREATE_USER', label: '批量新增用户' },
+  { value: 'UPDATE_USER', label: '编辑用户' },
+  { value: 'USER_STATUS', label: '启用/禁用账号' },
+  { value: 'CREATE_DEPT', label: '新增部门' },
+  { value: 'UPDATE_DEPT', label: '编辑部门' },
+  { value: 'CREATE_PROJECT', label: '新建项目' },
+  { value: 'UPDATE_PROJECT', label: '编辑项目' },
+  { value: 'CHANGE_PROJECT_LEADER', label: '变更项目负责人' }
+]
+
+const auditLogs = ref([])
+const auditTotal = ref(0)
+const auditLoading = ref(false)
+const auditQuery = reactive({ page: 1, size: 20, action: null, keyword: '' })
+
+const formatTime = (value) => (value ? String(value).replace('T', ' ').slice(0, 16) : '—')
+
+async function loadAudit() {
+  auditLoading.value = true
+  try {
+    const res = await getAuditLogs({
+      page: auditQuery.page,
+      size: auditQuery.size,
+      action: auditQuery.action || undefined,
+      keyword: auditQuery.keyword || undefined
+    })
+    auditLogs.value = res.data?.records || []
+    auditTotal.value = res.data?.total || 0
+  } catch {
+    auditLogs.value = []
+    auditTotal.value = 0
+  } finally {
+    auditLoading.value = false
+  }
+}
+
+function searchAudit() {
+  auditQuery.page = 1
+  loadAudit()
+}
+
+function onAuditSizeChange() {
+  auditQuery.page = 1
+  loadAudit()
+}
+
 /* ---------------- 项目 ---------------- */
 const projects = ref([])
 const projectTotal = ref(0)
@@ -584,8 +1270,16 @@ const projectLoading = ref(false)
 const projectQuery = reactive({ page: 1, size: 10 })
 const projectDialogVisible = ref(false)
 const projectSaving = ref(false)
-const projectForm = reactive({ projectName: '', leaderId: null, deptId: null, description: '' })
+const projectForm = reactive({
+  projectName: '',
+  leaderId: null,
+  deptId: null,
+  description: '',
+  plannedEndDate: null
+})
 const leaderOptions = ref([])
+/** 编辑用户时的项目下拉：不受分页限制，一次取 100 条 */
+const allProjects = ref([])
 
 async function loadProjects() {
   projectLoading.value = true
@@ -606,6 +1300,15 @@ function onProjectSizeChange() {
   loadProjects()
 }
 
+async function loadProjectOptions() {
+  try {
+    const res = await listProjects({ page: 1, size: 100 })
+    allProjects.value = res.data?.records || []
+  } catch {
+    allProjects.value = []
+  }
+}
+
 async function loadLeaderOptions() {
   try {
     const res = await getUsers({ page: 1, size: 100 })
@@ -620,6 +1323,7 @@ function openCreateProject() {
   projectForm.leaderId = null
   projectForm.deptId = deptOptions.value[0]?.id ?? null
   projectForm.description = ''
+  projectForm.plannedEndDate = null
   projectDialogVisible.value = true
 }
 
@@ -643,7 +1347,8 @@ async function saveProject() {
       projectName: projectForm.projectName.trim(),
       leaderId: projectForm.leaderId,
       deptId: projectForm.deptId,
-      description: projectForm.description?.trim() || undefined
+      description: projectForm.description?.trim() || undefined,
+      plannedEndDate: projectForm.plannedEndDate || null
     })
     ElMessage.success('项目已创建')
     projectDialogVisible.value = false
@@ -658,7 +1363,7 @@ async function saveProject() {
 onMounted(async () => {
   if (!isAdmin.value) return
   await loadDepts()
-  await Promise.all([loadUsers(), loadProjects(), loadLeaderOptions()])
+  await Promise.all([loadUsers(), loadProjects(), loadLeaderOptions(), loadProjectOptions(), loadAudit()])
 })
 </script>
 
@@ -803,6 +1508,17 @@ onMounted(async () => {
   text-align: center;
 }
 
+.leader-hint {
+  margin: 0 0 14px;
+  color: rgba(40, 38, 36, 0.55);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.leader-hint b {
+  color: var(--wl-text);
+}
+
 .name-link {
   padding: 0;
   border: none;
@@ -887,6 +1603,10 @@ onMounted(async () => {
   color: #8a6d4f;
 }
 
+.cycle-overdue {
+  color: #a2703f;
+}
+
 .foot {
   display: flex;
   justify-content: flex-end;
@@ -895,6 +1615,139 @@ onMounted(async () => {
 
 .fill {
   width: 100%;
+}
+
+.muted {
+  color: rgba(40, 38, 36, 0.28);
+  font-size: 12px;
+}
+
+.user-name {
+  margin-right: 6px;
+  color: var(--wl-text);
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.status-row__hint {
+  color: rgba(40, 38, 36, 0.45);
+  font-size: 11px;
+}
+
+.seg :deep(.el-radio-button__inner) {
+  border-color: rgba(63, 74, 90, 0.12);
+  background: #fff;
+  color: rgba(40, 38, 36, 0.6);
+  font-size: 12px;
+}
+
+.seg :deep(.el-radio-button__original-radio:checked + .el-radio-button__inner) {
+  background: var(--wl-primary);
+  border-color: var(--wl-primary);
+  color: #fff;
+}
+
+.proj-tags {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.proj-tags :deep(.el-tag) {
+  --el-tag-border-color: rgba(63, 74, 90, 0.16);
+  --el-tag-text-color: rgba(40, 38, 36, 0.62);
+  --el-tag-bg-color: #faf9f7;
+  font-size: 11px;
+}
+
+.proj-more {
+  color: rgba(40, 38, 36, 0.36);
+  font-size: 11px;
+}
+
+/* 弹窗内部的页面签 */
+.inner-tabs :deep(.el-tabs__item) {
+  font-size: 13px;
+}
+
+.batch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 10px;
+}
+
+.batch-hint {
+  margin: -2px 0 10px;
+  color: rgba(40, 38, 36, 0.42);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.batch-preview {
+  border-radius: 10px;
+  background: #faf9f7;
+  padding: 8px 10px;
+  max-height: 190px;
+  overflow-y: auto;
+}
+
+.batch-preview__head {
+  padding-bottom: 6px;
+  color: rgba(40, 38, 36, 0.5);
+  font-size: 11px;
+}
+
+.batch-preview__head em {
+  color: #a2703f;
+  font-style: normal;
+}
+
+.batch-preview ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.batch-preview li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  border-top: 1px solid rgba(63, 74, 90, 0.04);
+  color: var(--wl-text);
+  font-size: 12px;
+}
+
+.batch-preview li.is-bad {
+  color: #a2703f;
+}
+
+.batch-preview__no {
+  width: 18px;
+  color: rgba(40, 38, 36, 0.3);
+  font-size: 11px;
+  text-align: right;
+}
+
+.batch-preview__name {
+  color: rgba(40, 38, 36, 0.7);
+}
+
+.batch-preview__meta {
+  margin-left: auto;
+  color: rgba(40, 38, 36, 0.4);
+  font-size: 11px;
+}
+
+.batch-preview li em {
+  color: #a2703f;
+  font-size: 11px;
+  font-style: normal;
 }
 
 .denied {

@@ -1,8 +1,11 @@
 package com.worklog.service;
 
 import com.worklog.common.PageResult;
+import com.worklog.dto.BatchUserCreateRequest;
 import com.worklog.dto.UserCreateRequest;
 import com.worklog.dto.UserQuery;
+import com.worklog.dto.UserUpdateRequest;
+import com.worklog.vo.BatchUserResultVO;
 import com.worklog.vo.UserVO;
 
 /**
@@ -19,6 +22,18 @@ public interface SysUserService {
      * 新增用户（仅管理员），密码用 BCrypt 加密存储。
      */
     UserVO create(UserCreateRequest request);
+
+    /**
+     * 批量新增用户（仅管理员）。
+     *
+     * <p>逐行校验：成功的立即入库，失败的行带着原因回传，不影响其他行。</p>
+     */
+    BatchUserResultVO batchCreate(BatchUserCreateRequest request);
+
+    /**
+     * 编辑用户（仅管理员）：姓名、角色、所属部门、参与项目。
+     */
+    UserVO update(Long userId, UserUpdateRequest request);
 
     /**
      * 启用/禁用用户。

@@ -1,0 +1,1 @@
+import{s as t}from"./_plugin-vue_export-helper-C3MeLRoN.js";function u(o){return t.post("/auth/login",o)}function r(){return t.get("/auth/me")}function a(){return t.post("/auth/logout")}function s(o){return t.put("/auth/password",o)}export{a,s as c,u as l,r as m};

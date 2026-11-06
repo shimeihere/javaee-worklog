@@ -41,12 +41,20 @@ class BasicAdminTest extends ApiTestSupport {
         assertThat(root.path("deptName").asText()).isEqualTo("周览科技");
         assertThat(root.path("parentId").asLong()).isZero();
         assertThat(root.path("userCount").asLong()).as("公司本部直属人数（含高管）").isGreaterThanOrEqualTo(1);
-        assertThat(root.path("children").size()).as("三个二级部门").isEqualTo(3);
+        // 种子数据是 3 个二级部门；演示中允许管理员再建部门，这里只校验"两级结构"
+        assertThat(root.path("children").size()).as("至少三个二级部门").isGreaterThanOrEqualTo(3);
+        root.path("children").forEach(child ->
+                assertThat(child.path("children").size()).as("只有两级，叶子节点无子部门").isZero());
 
-        JsonNode tech = root.path("children").get(0);
-        assertThat(tech.path("deptName").asText()).isEqualTo("技术中心");
+        JsonNode tech = null;
+        for (JsonNode child : root.path("children")) {
+            if ("技术中心".equals(child.path("deptName").asText())) {
+                tech = child;
+                break;
+            }
+        }
+        assertThat(tech).as("技术中心应存在").isNotNull();
         assertThat(tech.path("userCount").asLong()).isEqualTo(3);
-        assertThat(tech.path("children").size()).as("只有两级，叶子节点无子部门").isZero();
     }
 
     // ------------------------------------------------------------------

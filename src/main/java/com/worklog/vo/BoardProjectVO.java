@@ -7,6 +7,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDate;
 
 /**
  * 看板右侧"按项目"排行的一行。
@@ -35,4 +36,25 @@ public class BoardProjectVO implements Serializable {
     private int participants;
 
     private int rate;
+
+    /** 立项日期 */
+    private LocalDate startDate;
+
+    /** 计划完成日期（可空） */
+    private LocalDate plannedEndDate;
+
+    /** 已进行天数（立项当天 = 第 1 天） */
+    private Integer elapsedDays;
+
+    /** 计划工期（含首尾） */
+    private Integer plannedDays;
+
+    /** 剩余天数，负数表示超期 */
+    private Integer remainingDays;
+
+    /** 时间进度 0-100；没设计划完成日为空 */
+    private Integer timeProgress;
+
+    /** 是否超期 */
+    private boolean overdue;
 }

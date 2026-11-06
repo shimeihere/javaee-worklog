@@ -10,7 +10,17 @@
     <ul v-if="members.length" class="roster">
       <li v-for="member in members" :key="member.id" class="roster__item">
         <span class="roster__avatar">{{ member.realName?.slice(0, 1) }}</span>
-        <span class="roster__name">{{ member.realName }}</span>
+
+        <button
+          v-if="clickable && member.id"
+          type="button"
+          class="roster__name roster__name--link"
+          @click="select(member)"
+        >
+          {{ member.realName }}
+        </button>
+        <span v-else class="roster__name">{{ member.realName }}</span>
+
         <span class="roster__role">{{ member.roleName }}</span>
       </li>
     </ul>
@@ -30,15 +40,21 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   title: { type: String, default: '成员名单' },
   members: { type: Array, default: () => [] },
-  loading: { type: Boolean, default: false }
+  loading: { type: Boolean, default: false },
+  /** 姓名是否可点（点了再叠加明细弹窗） */
+  clickable: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue', 'select'])
 
 const visible = computed({
   get: () => props.modelValue,
   set: (value) => emit('update:modelValue', value)
 })
+
+function select(member) {
+  emit('select', member)
+}
 </script>
 
 <style scoped>
@@ -59,11 +75,12 @@ const visible = computed({
   gap: 10px;
   padding: 9px 10px;
   border-radius: 10px;
-  transition: background-color 0.24s var(--wl-ease);
+  transition: var(--wl-motion);
 }
 
 .roster__item:hover {
   background: rgba(63, 74, 90, 0.04);
+  transform: translateY(-1px);
 }
 
 .roster__avatar {
@@ -83,6 +100,25 @@ const visible = computed({
   flex: 1;
   color: var(--wl-text);
   font-size: 13px;
+}
+
+/* 可点击姓名：下钻到个人明细 */
+.roster__name--link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--wl-primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(63, 74, 90, 0.3);
+  transition: var(--wl-motion);
+}
+
+.roster__name--link:hover {
+  color: var(--wl-violet);
+  border-bottom-color: rgba(122, 106, 147, 0.5);
 }
 
 .roster__role {

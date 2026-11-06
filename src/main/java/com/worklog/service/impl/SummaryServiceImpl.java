@@ -177,9 +177,10 @@ public class SummaryServiceImpl implements SummaryService {
     }
 
     /**
-     * 明细查看权限：只有部门负责人可以看本人部门成员的填报内容。
-     *
-     * <p>高管只对组织与项目负责，管理员只做系统配置，二者都不越级看个人明细。</p>
+     * 明细查看权限：
+     * 高管（总裁监督权）可下钻查看任何人；
+     * 部门负责人仅限本部门成员；
+     * 管理员只做系统配置，不开放个人明细。
      */
     private SysUser requireDetailTarget(Long userId) {
         SysUser target = sysUserMapper.selectById(userId);
@@ -188,6 +189,11 @@ public class SummaryServiceImpl implements SummaryService {
         }
 
         LoginUser me = UserContext.require();
+
+        // 总裁监督权：高管可查看任何员工明细
+        if (RoleConstant.EXECUTIVE.equals(me.role())) {
+            return target;
+        }
         if (!RoleConstant.DEPT_LEADER.equals(me.role())) {
             throw new BusinessException(ResultCode.FORBIDDEN, "不在你的管理范围内，无法查看个人上报明细");
         }
@@ -389,7 +395,8 @@ public class SummaryServiceImpl implements SummaryService {
                 .collect(Collectors.groupingBy(DailyReport::getReportDate));
 
         List<SummaryRowVO> rows = new ArrayList<>();
-        for (LocalDate date = start; !date.isAfter(end); date = date.plusDays(1)) {
+        // 汇总中心默认"最近日期先显示"：日期维度按时间倒序，打开就能看到今天/昨天
+        for (LocalDate date = end; !date.isBefore(start); date = date.minusDays(1)) {
             List<DailyReport> dayReports = grouped.getOrDefault(date, List.of());
             int submitted = dayReports.size();
 

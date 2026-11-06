@@ -13,16 +13,21 @@ import com.worklog.mapper.DailyReportMapper;
 import com.worklog.mapper.WeeklyReportMapper;
 import com.worklog.security.UserContext;
 import com.worklog.service.AttachmentService;
+import com.worklog.service.DataScopeService;
 import com.worklog.vo.AttachmentVO;
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -47,6 +52,7 @@ public class AttachmentServiceImpl implements AttachmentService {
     private final DailyReportMapper dailyReportMapper;
     private final WeeklyReportMapper weeklyReportMapper;
     private final UploadProperties uploadProperties;
+    private final DataScopeService dataScopeService;
 
     @PostConstruct
     public void init() {
@@ -115,6 +121,8 @@ public class AttachmentServiceImpl implements AttachmentService {
         if (reportType == null || reportId == null) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "缺少 reportType 或 reportId");
         }
+        // 附件清单等于单据正文的延伸：看不到单据就不该看到文件名和下载地址
+        requireReadableReport(reportType, reportId);
         return attachmentMapper.selectList(new LambdaQueryWrapper<Attachment>()
                         .eq(Attachment::getReportType, reportType)
                         .eq(Attachment::getReportId, reportId)
@@ -143,6 +151,59 @@ public class AttachmentServiceImpl implements AttachmentService {
             log.warn("附件文件删除失败：{}", attachment.getFileUrl(), e);
         }
         log.info("附件已删除：id={}, file={}", attachmentId, attachment.getFileName());
+    }
+
+    @Override
+    public void download(Long attachmentId, HttpServletResponse response) throws IOException {
+        Attachment attachment = attachmentMapper.selectById(attachmentId);
+        if (attachment == null) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "附件不存在");
+        }
+        // 先按单据数据范围鉴权，再落盘读文件（顺序不能反）
+        requireReadableReport(attachment.getReportType(), attachment.getReportId());
+
+        Path root = uploadRoot();
+        String relative = attachment.getFileUrl() == null ? ""
+                : attachment.getFileUrl().replaceFirst("^/upload/", "");
+        Path file = root.resolve(relative).normalize();
+        if (!file.startsWith(root) || !Files.isReadable(file)) {
+            throw new BusinessException(ResultCode.NOT_FOUND, "附件文件已丢失，请重新上传");
+        }
+
+        String encoded = URLEncoder.encode(attachment.getFileName(), StandardCharsets.UTF_8)
+                .replace("+", "%20");
+        response.setContentType(MediaType.APPLICATION_OCTET_STREAM_VALUE);
+        response.setHeader("Content-Disposition", "attachment; filename*=utf-8''" + encoded);
+        response.setContentLengthLong(Files.size(file));
+        Files.copy(file, response.getOutputStream());
+        response.flushBuffer();
+        log.info("附件下载：id={}, user={}, file={}", attachmentId,
+                UserContext.require().username(), attachment.getFileName());
+    }
+
+    /**
+     * 校验单据存在，且当前登录人在该单据的数据范围内（本人 / 本部门 / 高管）。
+     */
+    private void requireReadableReport(Integer reportType, Long reportId) {
+        Long ownerId;
+        if (Objects.equals(reportType, ReportConstant.REPORT_TYPE_DAILY)) {
+            DailyReport report = dailyReportMapper.selectById(reportId);
+            if (report == null) {
+                throw new BusinessException(ResultCode.NOT_FOUND, "日报不存在");
+            }
+            ownerId = report.getUserId();
+        } else if (Objects.equals(reportType, ReportConstant.REPORT_TYPE_WEEKLY)) {
+            WeeklyReport report = weeklyReportMapper.selectById(reportId);
+            if (report == null) {
+                throw new BusinessException(ResultCode.NOT_FOUND, "周报不存在");
+            }
+            ownerId = report.getUserId();
+        } else {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "reportType 只能是 1（日报）或 2（周报）");
+        }
+        if (!dataScopeService.canViewReportOf(ownerId)) {
+            throw new BusinessException(ResultCode.FORBIDDEN, "无权查看该单据的附件");
+        }
     }
 
     /** 校验单据存在且属于当前登录人 */

@@ -142,7 +142,6 @@ class AuthFlowTest {
     @DisplayName("登出接口可用（无状态方案，由前端丢弃令牌）")
     void logout() throws Exception {
         MvcResult result = mockMvc.perform(post(CONTEXT_PATH + "/auth/logout")
-                        .contextPath(CONTEXT_PATH)
                         .header(HEADER, "Bearer " + login("admin")))
                 .andExpect(status().isOk())
                 .andReturn();
@@ -166,7 +165,6 @@ class AuthFlowTest {
 
     private JsonNode postJson(String path, String json) throws Exception {
         MvcResult result = mockMvc.perform(post(CONTEXT_PATH + path)
-                        .contextPath(CONTEXT_PATH)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isOk())
@@ -175,7 +173,7 @@ class AuthFlowTest {
     }
 
     private JsonNode getJson(String path, String authorization) throws Exception {
-        MockHttpServletRequestBuilder builder = get(CONTEXT_PATH + path).contextPath(CONTEXT_PATH);
+        MockHttpServletRequestBuilder builder = get(CONTEXT_PATH + path);
         if (authorization != null) {
             builder.header(HEADER, authorization);
         }

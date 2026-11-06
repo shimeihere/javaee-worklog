@@ -59,7 +59,7 @@
 import { ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document, Download, Upload } from '@element-plus/icons-vue'
-import { deleteAttachment, uploadAttachment } from '@/api/report'
+import { deleteAttachment, downloadAttachment, uploadAttachment } from '@/api/report'
 
 const props = defineProps({
   /** 1 日报 / 2 周报 */
@@ -124,12 +124,24 @@ async function remove(file) {
   }
 }
 
-function download(file) {
-  if (!file?.fileUrl) {
+async function download(file) {
+  if (!file?.id) {
     return
   }
-  // 附件走静态映射 /api/upload/**，直接新窗口打开即可预览或下载
-  window.open(`/api${file.fileUrl}`, '_blank', 'noopener')
+  try {
+    // 后端校验登录态 + 单据范围后回流文件，前端拿 blob 后再触发下载
+    const blob = await downloadAttachment(file.id)
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = file.fileName || 'attachment'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+  } catch {
+    /* 拦截器已提示 */
+  }
 }
 
 function formatSize(size) {

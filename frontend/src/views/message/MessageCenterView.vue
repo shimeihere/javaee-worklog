@@ -38,7 +38,9 @@
           <div class="msg__body">
             <div class="msg__top">
               <b>{{ item.title }}</b>
-              <span class="msg__type">{{ item.msgTypeName }}</span>
+              <span class="msg__type" :class="item.msgType === 2 ? 'is-system' : 'is-remind'">
+                {{ item.msgTypeName }}
+              </span>
             </div>
             <p class="msg__content">{{ item.content }}</p>
           </div>
@@ -302,11 +304,21 @@ onMounted(load)
 }
 
 .msg__type {
-  padding: 1px 7px;
-  border-radius: 5px;
-  background: rgba(63, 74, 90, 0.06);
-  color: rgba(40, 38, 36, 0.5);
+  padding: 1px 8px;
+  border-radius: var(--wl-radius-tag);
   font-size: 10px;
+  line-height: 1.7;
+}
+
+/* 系统通知：浅紫；催报提醒：暖驼 */
+.msg__type.is-system {
+  background: rgba(122, 106, 147, 0.12);
+  color: var(--wl-violet);
+}
+
+.msg__type.is-remind {
+  background: rgba(185, 154, 122, 0.16);
+  color: #8a7156;
 }
 
 .msg__content {

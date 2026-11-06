@@ -156,85 +156,98 @@
       </footer>
     </section>
 
-    <!-- 成员明细抽屉 -->
-    <el-drawer
+    <!-- 成员明细：800px 居中大弹窗（替代原来的抽屉） -->
+    <el-dialog
       v-model="drawerVisible"
+      width="800px"
+      align-center
+      append-to-body
+      class="detail-dialog"
+      :show-close="true"
       title="成员填报明细"
-      direction="rtl"
-      size="440px"
-      class="detail-drawer"
     >
       <div v-loading="drawerLoading" class="drawer">
         <header v-if="drawerUser" class="drawer__head">
           <span class="drawer__avatar">{{ drawerUser.name?.slice(0, 1) }}</span>
           <div class="drawer__meta">
             <b>{{ drawerUser.name }}</b>
-            <small>{{ drawerUser.sub || '—' }} · 提交率 {{ drawerUser.rate ?? 0 }}%</small>
+            <small>
+              {{ drawerUser.sub || '—' }}
+              <template v-if="drawerUser.rate != null"> · 提交率 {{ drawerUser.rate }}%</template>
+            </small>
           </div>
           <span class="drawer__count">{{ drawerTab === 'daily' ? dailyList.length : weeklyList.length }} 份</span>
+
+          <el-radio-group v-model="drawerTab" class="drawer__tabs" @change="onDrawerTabChange">
+            <el-radio-button value="daily">日报</el-radio-button>
+            <el-radio-button value="weekly">周报</el-radio-button>
+          </el-radio-group>
         </header>
 
-        <el-radio-group v-model="drawerTab" class="drawer__tabs" @change="onDrawerTabChange">
-          <el-radio-button value="daily">日报</el-radio-button>
-          <el-radio-button value="weekly">周报</el-radio-button>
-        </el-radio-group>
+        <div class="drawer__body">
+          <!-- 日报 -->
+          <el-collapse
+            v-if="drawerTab === 'daily' && dailyList.length"
+            v-model="activeDetails"
+            class="detail-list"
+          >
+            <el-collapse-item v-for="item in dailyList" :key="item.id" :name="String(item.id)">
+              <template #title>
+                <div class="detail-title">
+                  <span class="detail-date">{{ item.reportDate }}</span>
+                  <span class="detail-hours">{{ formatHours(item.hours) }} h</span>
+                </div>
+              </template>
 
-        <!-- 日报 -->
-        <el-collapse
-          v-if="drawerTab === 'daily' && dailyList.length"
-          v-model="activeDetails"
-          class="detail-list"
-        >
-          <el-collapse-item v-for="item in dailyList" :key="item.id" :name="String(item.id)">
-            <template #title>
-              <div class="detail-title">
-                <span class="detail-date">{{ item.reportDate }}</span>
-                <span class="detail-hours">{{ formatHours(item.hours) }} h</span>
+              <div class="detail-body">
+                <p><span>项目</span><b>{{ item.projectName || '—' }}</b></p>
+                <p><span>完成</span><b>{{ item.contentDone || '—' }}</b></p>
+                <p><span>计划</span><b>{{ item.contentPlan || '—' }}</b></p>
               </div>
-            </template>
+            </el-collapse-item>
+          </el-collapse>
 
-            <div class="detail-body">
-              <p><span>项目</span><b>{{ item.projectName || '—' }}</b></p>
-              <p><span>完成</span><b>{{ item.contentDone || '—' }}</b></p>
-              <p><span>计划</span><b>{{ item.contentPlan || '—' }}</b></p>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
+          <!-- 周报 -->
+          <el-collapse
+            v-else-if="drawerTab === 'weekly' && weeklyList.length"
+            v-model="activeWeeklies"
+            class="detail-list"
+          >
+            <el-collapse-item v-for="item in weeklyList" :key="item.id" :name="String(item.id)">
+              <template #title>
+                <div class="detail-title">
+                  <span class="detail-date">{{ item.startDate }} ~ {{ item.endDate }}</span>
+                  <span class="detail-hours">周报</span>
+                </div>
+              </template>
 
-        <!-- 周报 -->
-        <el-collapse
-          v-else-if="drawerTab === 'weekly' && weeklyList.length"
-          v-model="activeWeeklies"
-          class="detail-list"
-        >
-          <el-collapse-item v-for="item in weeklyList" :key="item.id" :name="String(item.id)">
-            <template #title>
-              <div class="detail-title">
-                <span class="detail-date">{{ item.startDate }} ~ {{ item.endDate }}</span>
-                <span class="detail-hours">周报</span>
+              <div class="detail-body">
+                <p><span>项目</span><b>{{ item.projectName || '—' }}</b></p>
+                <p><span>总结</span><b>{{ item.summary || '—' }}</b></p>
+                <p><span>计划</span><b>{{ item.plan || '—' }}</b></p>
               </div>
-            </template>
+            </el-collapse-item>
+          </el-collapse>
 
-            <div class="detail-body">
-              <p><span>项目</span><b>{{ item.projectName || '—' }}</b></p>
-              <p><span>总结</span><b>{{ item.summary || '—' }}</b></p>
-              <p><span>计划</span><b>{{ item.plan || '—' }}</b></p>
-            </div>
-          </el-collapse-item>
-        </el-collapse>
-
-        <p v-else-if="!drawerLoading" class="drawer__empty">
-          {{ drawerError || (drawerTab === 'daily' ? '这个区间没有已提交的日报' : '这个区间没有已提交的周报') }}
-        </p>
+          <p v-else-if="!drawerLoading" class="drawer__empty">
+            {{ drawerError || (drawerTab === 'daily' ? '这个区间没有已提交的日报' : '这个区间没有已提交的周报') }}
+          </p>
+        </div>
       </div>
-    </el-drawer>
 
-    <!-- 部门/项目成员名单（穿透，不跳页） -->
+      <template #footer>
+        <el-button @click="drawerVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 部门/项目成员名单（穿透，不跳页；点姓名再叠加明细弹窗） -->
     <MemberRosterDialog
       v-model="rosterVisible"
       :title="rosterTitle"
       :members="rosterMembers"
       :loading="rosterLoading"
+      :clickable="canViewDetail"
+      @select="openDetailFromRoster"
     />
   </div>
 </template>
@@ -253,8 +266,8 @@ import { getUser } from '@/utils/auth'
 
 const user = getUser()
 const isLeader = computed(() => user?.role === 'DEPT_LEADER')
-// 只有负责人能看个人明细；高管只做组织/项目层面的观察
-const canViewDetail = computed(() => isLeader.value)
+// 总裁监督权：高管可下钻看任何人明细；负责人只看本部门；管理员不开放
+const canViewDetail = computed(() => ['EXECUTIVE', 'DEPT_LEADER'].includes(user?.role))
 
 const dimensions = [
   { value: 'project', label: '项目' },
@@ -300,8 +313,14 @@ function rangeParams() {
   return { startDate, endDate }
 }
 
+/**
+ * 打开成员明细大窗。
+ *
+ * 注意：不能按"当前维度"提前 return —— 项目/部门维度是从成员名单里点进来的，
+ * 那样写会把点击事件直接吞掉（验收时表现为"点人名没反应"）。
+ */
 async function openDetail(row) {
-  if (filters.dimension !== 'user') {
+  if (!row?.id) {
     return
   }
   drawerUser.value = row
@@ -314,6 +333,18 @@ async function openDetail(row) {
   drawerVisible.value = true
 
   await loadDaily()
+}
+
+/** 从名单弹窗里点姓名：先收起名单，再弹明细大窗，不跳页 */
+function openDetailFromRoster(member) {
+  if (!member) return
+  rosterVisible.value = false
+  openDetail({
+    id: member.id,
+    name: member.realName,
+    sub: member.deptName,
+    rate: null
+  })
 }
 
 async function loadDaily() {
@@ -805,19 +836,27 @@ onMounted(async () => {
   text-decoration-color: rgba(122, 106, 147, 0.6);
 }
 
-/* ---------------- 明细抽屉 ---------------- */
-.detail-drawer :deep(.el-drawer__header) {
-  margin-bottom: 6px;
-  color: var(--wl-text);
-  font-size: 15px;
-  font-weight: 600;
-}
-
+/* ---------------- 明细大弹窗（800px） ---------------- */
 .drawer {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-height: 220px;
+  min-height: 240px;
+}
+
+.drawer__body {
+  max-height: 56vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.drawer__body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.drawer__body::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  background: rgba(63, 74, 90, 0.14);
 }
 
 .drawer__head {
@@ -867,7 +906,8 @@ onMounted(async () => {
 }
 
 .drawer__tabs {
-  align-self: flex-start;
+  margin-left: auto;
+  align-self: center;
 }
 
 .drawer__tabs :deep(.el-radio-button__inner) {

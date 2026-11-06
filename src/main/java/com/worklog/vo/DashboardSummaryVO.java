@@ -56,4 +56,19 @@ public class DashboardSummaryVO implements Serializable {
 
     /** 今日活跃人数：今天有填报记录的人（仅管理员工作台展示） */
     private Long todayActiveUsers;
+
+    /** 部门数量（不含根节点，仅管理员工作台展示） */
+    private Long deptCount;
+
+    /** 全公司项目总数（仅管理员工作台展示） */
+    private Long companyProjectCount;
+
+    /** 本周应提交未提交人次（仅部门负责人：待提醒名单） */
+    private Long remindCount;
+
+    /** 本周全公司应提交未提交人次（仅高管：全公司逾期） */
+    private Long overdueCount;
+
+    /** 逾期人次较昨日变化：负数=减少，正数=增加，0=持平 */
+    private Long overdueDelta;
 }

@@ -9,6 +9,7 @@ import lombok.Data;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 /**
@@ -39,6 +40,9 @@ public class Project implements Serializable {
 
     /** 项目描述 */
     private String description;
+
+    /** 计划完成日期（可空；空时只看"已进行多久"，不算百分比） */
+    private LocalDate plannedEndDate;
 
     /** 状态：0 进行中 / 1 已归档 */
     private Integer status;

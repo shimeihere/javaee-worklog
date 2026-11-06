@@ -147,6 +147,22 @@ public class MessageServiceImpl implements MessageService {
         return "已发送催报提醒给 " + target.getRealName();
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void notifySystem(Long userId, String title, String content) {
+        if (userId == null) {
+            return;
+        }
+        SysMessage message = new SysMessage();
+        message.setUserId(userId);
+        message.setTitle(title);
+        message.setContent(content);
+        message.setMsgType(SysMessage.TYPE_SYSTEM);
+        message.setIsRead(0);
+        sysMessageMapper.insert(message);
+        log.info("系统通知：userId={}, title={}", userId, title);
+    }
+
     private MessageVO toVO(SysMessage message) {
         return MessageVO.builder()
                 .id(message.getId())

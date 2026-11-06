@@ -38,7 +38,6 @@ public abstract class ApiTestSupport {
     protected String login(String username) throws Exception {
         JsonNode body = objectMapper.readTree(
                 mockMvc.perform(MockMvcRequestBuilders.post(CTX + "/auth/login")
-                                .contextPath(CTX)
                                 .contentType(MediaType.APPLICATION_JSON)
                                 .content("{\"username\":\"" + username + "\",\"password\":\"" + DEFAULT_PASSWORD + "\"}"))
                         .andExpect(status().isOk())
@@ -54,13 +53,13 @@ public abstract class ApiTestSupport {
     }
 
     protected JsonNode get(String path, String token, Map<String, String> params) throws Exception {
-        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.get(CTX + path).contextPath(CTX);
+        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.get(CTX + path);
         params.forEach(builder::param);
         return send(builder, token);
     }
 
     protected JsonNode post(String path, String token, String json) throws Exception {
-        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.post(CTX + path).contextPath(CTX);
+        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.post(CTX + path);
         if (json != null) {
             builder.contentType(MediaType.APPLICATION_JSON).content(json);
         }
@@ -72,8 +71,7 @@ public abstract class ApiTestSupport {
     }
 
     protected JsonNode put(String path, String token, String json) throws Exception {
-        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.put(CTX + path)
-                .contextPath(CTX);
+        MockHttpServletRequestBuilder builder = MockMvcRequestBuilders.put(CTX + path);
         if (json != null) {
             builder.contentType(MediaType.APPLICATION_JSON).content(json);
         }
@@ -81,7 +79,7 @@ public abstract class ApiTestSupport {
     }
 
     protected JsonNode delete(String path, String token) throws Exception {
-        return send(MockMvcRequestBuilders.delete(CTX + path).contextPath(CTX), token);
+        return send(MockMvcRequestBuilders.delete(CTX + path), token);
     }
 
     /** multipart 上传（附件） */
@@ -91,7 +89,6 @@ public abstract class ApiTestSupport {
                 MediaType.APPLICATION_OCTET_STREAM_VALUE, content);
         MockMultipartHttpServletRequestBuilder builder =
                 MockMvcRequestBuilders.multipart(CTX + path).file(file);
-        builder.contextPath(CTX);
         params.forEach(builder::param);
         return send(builder, token);
     }

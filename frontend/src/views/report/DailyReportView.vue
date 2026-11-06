@@ -39,7 +39,7 @@
           label-position="top"
           class="panel__form"
         >
-          <el-form-item label="所属项目" required>
+          <el-form-item label="所属项目（选填）" >
             <el-select
               v-model="form.projectId"
               class="fill"
@@ -57,6 +57,7 @@
                 <span class="opt__meta">{{ project.leaderName }}</span>
               </el-option>
             </el-select>
+            <p class="field-hint">不选也能提交，只是不会计入项目进度；做部门事务、杂事时可以留空。</p>
           </el-form-item>
 
           <el-form-item label="今日完成" required>
@@ -287,10 +288,6 @@ async function saveDraft() {
 
 async function submit() {
   if (saving.value || isSubmitted.value) {
-    return
-  }
-  if (!form.projectId) {
-    ElMessage.warning('提交前请选择所属项目')
     return
   }
   if (!form.contentDone?.trim()) {
@@ -576,5 +573,13 @@ onMounted(async () => {
   .report__aside {
     position: static;
   }
+}
+
+.field-hint {
+  width: 100%;
+  margin: 6px 0 0;
+  color: rgba(40, 38, 36, 0.4);
+  font-size: 11px;
+  line-height: 1.6;
 }
 </style>

@@ -1,0 +1,121 @@
+# =====================================================================
+#  周览 Worklog · 配置模板
+#  用法：把本文件复制成同目录下的 application.yml，按本机情况改数据库账号密码即可。
+#  真实的 application.yml 已在 .gitignore 里排除，不会被提交到仓库。
+# =====================================================================
+
+server:
+  port: 8080
+  servlet:
+    # 不再使用 context-path：整个应用挂在根路径上，
+    # /api/** 由 WebMvcConfig 的 addPathPrefix 统一加前缀，/ 与前端路由交给 SPA 兜底。
+    encoding:
+      charset: UTF-8
+      enabled: true
+      force: true
+
+spring:
+  application:
+    name: worklog
+
+  # ---------------- 数据库连接（按本机 MySQL 实际情况修改 username / password） ----------------
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/worklog?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: root
+    password: your_password
+    hikari:
+      pool-name: WorklogHikariPool
+      minimum-idle: 5
+      maximum-pool-size: 20
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      connection-timeout: 30000
+      connection-test-query: SELECT 1
+
+  # ---------------- 文件上传（M3/M4 附件上传，限制 10MB） ----------------
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+  # ---------------- JSON 序列化 ----------------
+  # 注意：不要开启 default-property-inclusion: non_null，
+  # 否则 Result.fail 的 data 字段会被整键丢弃，前端拿不到 data: null 的统一结构。
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+
+  # ---------------- 请求参数日期格式绑定 ----------------
+  mvc:
+    format:
+      date: yyyy-MM-dd
+      date-time: yyyy-MM-dd HH:mm:ss
+      time: HH:mm:ss
+
+# ---------------- MyBatis-Plus ----------------
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  type-aliases-package: com.worklog.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    # 开发期打印 SQL；走 slf4j 而不是 System.out，控制台编码才能生效
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    banner: false
+    db-config:
+      id-type: auto
+      insert-strategy: not_null
+      update-strategy: not_null
+
+# ---------------- 业务自定义配置 ----------------
+worklog:
+  jwt:
+    header: Authorization
+    token-prefix: "Bearer "
+    # 生产环境务必改为环境变量注入，长度 >= 32 字节
+    secret: worklog-jwt-secret-key-change-me-in-production-2026
+    # 令牌有效期（分钟）：12 小时
+    expire-minutes: 720
+  upload:
+    # 附件落盘目录（本机绝对路径；换机器演示时改这一行）
+    dir: ./uploads
+    # 单文件上限 10MB，需与 spring.servlet.multipart.max-file-size 保持一致
+    max-size: 10485760
+    # 附件扩展名白名单（小写，不含点）
+    allowed-extensions:
+      - pdf
+      - doc
+      - docx
+      - xls
+      - xlsx
+      - ppt
+      - pptx
+      - png
+      - jpg
+      - jpeg
+      - gif
+      - txt
+      - md
+      - zip
+  reminder:
+    # 每日提交截止时间，超时后触发催报（M7）
+    daily-deadline: "18:30"
+    # 定时扫描表达式：工作日 18:35 扫描当天未提交人员
+    scan-cron: "0 35 18 ? * MON-FRI"
+
+logging:
+  level:
+    root: info
+    com.worklog: debug
+    com.worklog.mapper: debug
+  # Windows 控制台默认代码页是 GBK(936)：Java 若按 UTF-8 输出就会变成"闃诲欢鏂囦欢"这类乱码。
+  # 这里显式让日志按控制台代码页输出；若你的终端已是 UTF-8，可用环境变量覆盖：
+  #   set WORKLOG_CONSOLE_CHARSET=UTF-8
+  charset:
+    console: ${WORKLOG_CONSOLE_CHARSET:GBK}
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

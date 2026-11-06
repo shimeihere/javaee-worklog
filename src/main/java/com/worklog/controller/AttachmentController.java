@@ -1,8 +1,11 @@
 package com.worklog.controller;
 
 import com.worklog.common.Result;
+import com.worklog.constant.RoleConstant;
+import com.worklog.security.RequireRole;
 import com.worklog.service.AttachmentService;
 import com.worklog.vo.AttachmentVO;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -13,6 +16,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -24,6 +28,8 @@ import java.util.List;
 @RestController
 @RequestMapping("/attachments")
 @RequiredArgsConstructor
+// 附件属于业务单据的一部分：管理员不参与业务，一并挡在门外
+@RequireRole({RoleConstant.EMPLOYEE, RoleConstant.DEPT_LEADER, RoleConstant.EXECUTIVE})
 public class AttachmentController {
 
     private final AttachmentService attachmentService;
@@ -49,6 +55,17 @@ public class AttachmentController {
     public Result<List<AttachmentVO>> list(@RequestParam Integer reportType,
                                            @RequestParam Long reportId) {
         return Result.ok(attachmentService.listByReport(reportType, reportId));
+    }
+
+    /**
+     * 下载附件：GET /api/attachments/{id}/download
+     *
+     * <p>附件不再走 /upload/** 静态映射：浏览器直接打开链接带不上 Authorization 头，
+     * 所以前端用 axios 以 blob 下载，后端在这里校验 JWT + 单据数据范围。</p>
+     */
+    @GetMapping("/{id}/download")
+    public void download(@PathVariable Long id, HttpServletResponse response) throws IOException {
+        attachmentService.download(id, response);
     }
 
     /**

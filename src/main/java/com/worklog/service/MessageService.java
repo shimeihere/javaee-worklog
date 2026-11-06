@@ -32,4 +32,13 @@ public interface MessageService {
      * @return 面向操作人的提示语（当天重复催报会返回"已催过"）
      */
     String remind(Long userId);
+
+    /**
+     * 系统通知：管理员新增用户、变更项目负责人等系统事件写一条站内信。
+     *
+     * @param userId  接收人
+     * @param title   标题
+     * @param content 正文
+     */
+    void notifySystem(Long userId, String title, String content);
 }

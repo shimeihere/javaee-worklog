@@ -30,6 +30,8 @@ import java.time.LocalDate;
 @RestController
 @RequestMapping("/reports/weekly")
 @RequiredArgsConstructor
+// 读接口同样要挡角色：管理员不参与业务，不能靠 /page、/{id} 顺走全公司周报正文
+@RequireRole({RoleConstant.EMPLOYEE, RoleConstant.DEPT_LEADER, RoleConstant.EXECUTIVE})
 public class WeeklyReportController {
 
     private final WeeklyReportService weeklyReportService;

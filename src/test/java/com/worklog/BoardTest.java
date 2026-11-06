@@ -125,7 +125,9 @@ class BoardTest extends ApiTestSupport {
 
         assertThat(data.path("pendingUsers").size())
                 .as("高管不直接对个人催报").isZero();
-        assertThat(data.path("projectStats").size()).isGreaterThan(0);
+        // 区间可能没有数据（跨月），这里只校验结构存在
+        assertThat(data.path("projectStats").isArray()).isTrue();
+        assertThat(data.path("recentActivities").isArray()).isTrue();
     }
 
     @Test
@@ -154,6 +156,10 @@ class BoardTest extends ApiTestSupport {
         report.setContentDone("今天已经交了");
         report.setHours(BigDecimal.valueOf(8));
         report.setStatus(1);
+        // 种子数据里 wangfan 今天已有一份草稿，直接 insert 会撞 uk_user_date -> 先清掉再插"已提交"
+        dailyReportMapper.delete(new LambdaQueryWrapper<DailyReport>()
+                .eq(DailyReport::getUserId, 4L)
+                .eq(DailyReport::getReportDate, LocalDate.now()));
         dailyReportMapper.insert(report);
 
         JsonNode pending = get("/board/overview", login("liyue"), Map.of("range", "month"))

@@ -34,6 +34,11 @@ export function withdrawDaily(id) {
   return request.post(`/reports/daily/${id}/withdraw`)
 }
 
+/** 日报分页（按数据范围过滤，工作台"最近提交"用） */
+export function getDailyPage(params) {
+  return request.get('/reports/daily/page', { params })
+}
+
 /* ---------------- 周报 ---------------- */
 
 /** 某周周报（传周内任意一天，服务端归一到周一；没有则 data 为 null） */
@@ -86,4 +91,9 @@ export function uploadAttachment(formData) {
 /** 删除附件 */
 export function deleteAttachment(id) {
   return request.delete(`/attachments/${id}`)
+}
+
+/** 下载附件：带 JWT 以 blob 拉流（附件不再有免鉴权的静态地址） */
+export function downloadAttachment(id) {
+  return request.get(`/attachments/${id}/download`, { responseType: 'blob' })
 }

@@ -2,55 +2,67 @@ package com.worklog.config;
 
 import com.worklog.security.JwtAuthInterceptor;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.io.Resource;
+import org.springframework.web.method.HandlerTypePredicate;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
+import org.springframework.web.servlet.config.annotation.PathMatchConfigurer;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
+import org.springframework.web.servlet.resource.PathResourceResolver;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.IOException;
 
 /**
- * Web MVC 配置：鉴权拦截器、附件静态映射、跨域。
+ * Web MVC 配置：/api 前缀、鉴权拦截器、静态资源与 SPA 兜底、跨域。
  *
- * <p>路径匹配基于 context-path（/api）之后的路径，例如 /api/auth/login 匹配 /auth/login。</p>
+ * <p>关键点：应用不再设置 context-path，而是把 {@code @RestController} 统一加上
+ * {@code /api} 前缀。这样根路径 {@code /} 可以正常返回前端 index.html，
+ * 前端路由（如 /workbench）也能被 SPA 兜底接管。</p>
  */
+@Slf4j
 @Configuration
 @RequiredArgsConstructor
 public class WebMvcConfig implements WebMvcConfigurer {
 
+    /** 前端构建产物在 classpath 下的位置（npm run build 后复制到 src/main/resources/static） */
+    private static final String STATIC_LOCATION = "classpath:/static/";
+
     private final JwtAuthInterceptor jwtAuthInterceptor;
-    private final UploadProperties uploadProperties;
 
     /**
-     * 无需登录即可访问的路径。
-     *
-     * <p>/upload/** 是附件静态资源：浏览器用 &lt;img&gt;/&lt;a&gt; 直接加载时无法携带
-     * Authorization 头，因此放行；文件名是 UUID，不可枚举，MVP 阶段接受该风险。</p>
+     * 所有 REST 接口统一加 /api 前缀，等价于以前的 context-path，但不会影响静态资源。
      */
-    private static final String[] WHITE_LIST = {
-            "/auth/login",
-            "/error",
-            "/upload/**"
-    };
+    @Override
+    public void configurePathMatch(PathMatchConfigurer configurer) {
+        configurer.addPathPrefix("/api",
+                HandlerTypePredicate.forAnnotation(RestController.class)
+                        .and(HandlerTypePredicate.forBasePackage("com.worklog")));
+    }
 
+    /**
+     * 鉴权拦截只作用于 /api/**：静态资源、index.html、前端路由都不该被 JWT 拦下。
+     *
+     * <p>附件不再走 /upload/** 静态映射：一律通过 /api/attachments/{id}/download
+     * 校验登录态与单据数据范围后再回流文件，避免"知道 URL 就能下载"。</p>
+     */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(jwtAuthInterceptor)
-                .addPathPatterns("/**")
-                .excludePathPatterns(WHITE_LIST);
+                .addPathPatterns("/api/**")
+                .excludePathPatterns("/api/auth/login");
     }
 
-    /** 把磁盘上的附件目录映射到 /api/upload/** */
+    /** 前端静态资源（含 SPA history 模式兜底）；附件改由 Controller 鉴权后下载 */
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
-        Path dir = Paths.get(uploadProperties.getDir()).toAbsolutePath().normalize();
-        String location = dir.toUri().toString();
-        if (!location.endsWith("/")) {
-            location = location + "/";
-        }
-        registry.addResourceHandler("/upload/**").addResourceLocations(location);
+        registry.addResourceHandler("/**")
+                .addResourceLocations(STATIC_LOCATION)
+                .resourceChain(true)
+                .addResolver(new SpaResourceResolver());
     }
 
     @Override
@@ -62,5 +74,39 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .exposedHeaders("Authorization")
                 .allowCredentials(true)
                 .maxAge(3600);
+    }
+
+    /**
+     * 单页应用兜底：
+     * <ul>
+     *   <li>真实存在的静态文件（js/css/图片）正常返回；</li>
+     *   <li>没有扩展名、且不在 /api 下的路径，一律返回 index.html，交给 Vue Router；</li>
+     *   <li>/api/** 与 /upload/** 不做兜底，未命中仍然返回统一的 JSON 404。</li>
+     * </ul>
+     */
+    static class SpaResourceResolver extends PathResourceResolver {
+
+        @Override
+        protected Resource getResource(String resourcePath, Resource location) throws IOException {
+            Resource requested = location.createRelative(resourcePath);
+            if (requested.exists() && requested.isReadable()) {
+                return requested;
+            }
+
+            boolean apiPath = isApiPath(resourcePath);
+            boolean hasExtension = resourcePath.contains(".");
+            if (apiPath || hasExtension) {
+                return null;
+            }
+
+            Resource index = location.createRelative("index.html");
+            return index.exists() && index.isReadable() ? index : null;
+        }
+
+        /** /api、/api/**、/upload、/upload/** 一律不做 SPA 兜底，交给接口返回 JSON */
+        private boolean isApiPath(String resourcePath) {
+            return resourcePath.equals("api") || resourcePath.startsWith("api/")
+                    || resourcePath.equals("upload") || resourcePath.startsWith("upload/");
+        }
     }
 }

@@ -59,4 +59,8 @@ public class BoardOverviewVO implements Serializable {
 
     @Builder.Default
     private List<BoardPendingVO> pendingUsers = new ArrayList<>();
+
+    /** 最新动态（负责人右侧 Tab 用） */
+    @Builder.Default
+    private List<BoardActivityVO> recentActivities = new ArrayList<>();
 }

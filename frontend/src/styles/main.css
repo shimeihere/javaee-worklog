@@ -5,6 +5,55 @@
         圆角：标签 6px / 按钮·输入框 8px / 卡片 12–16px
    ===================================================================== */
 
+/* ===== 自托管字体（只带 latin 子集，中文继续走系统字体） ===== */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-600.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-500.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/jetbrains-mono-600.woff2') format('woff2');
+}
+
 :root {
   /* 色彩 */
   --wl-bg: #f7f6f3;
@@ -17,11 +66,22 @@
   --wl-muted: rgba(40, 38, 36, 0.52);
   --wl-line: rgba(63, 74, 90, 0.1);
 
-  /* 形状与动效 */
-  --wl-radius-card: 18px;
+  /* 形状与动效：标签 6 / 控件 8 / 卡片 16 / 大弹窗 16 */
+  --wl-radius-tag: 6px;
   --wl-radius-control: 8px;
+  --wl-radius-card: 16px;
+  --wl-radius-dialog: 16px;
   --wl-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --wl-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* 全局统一动效：0.3s 过冲弹簧 */
+  --wl-motion: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* 卡片基座：纯白 + 1px 描边 + 极轻投影 */
+  --wl-border: #e7e4de;
+  --wl-shadow-card: 0 4px 24px rgba(40, 38, 36, 0.02);
+  --wl-camel-deep: #8a6d4f;
+  /* 大数字等宽字体（JetBrains Mono 未装时回退到 Cascadia/Consolas） */
+  --wl-mono: 'JetBrains Mono', 'Cascadia Mono', 'Consolas', 'SF Mono', monospace;
 
   /* 字体 */
   --wl-font:
@@ -57,9 +117,9 @@ body::before {
   z-index: 0;
   pointer-events: none;
   background:
-    radial-gradient(38% 42% at 18% 22%, rgba(122, 106, 147, 0.18), transparent 70%),
-    radial-gradient(36% 40% at 82% 16%, rgba(63, 74, 90, 0.1), transparent 70%),
-    radial-gradient(44% 46% at 70% 84%, rgba(185, 154, 122, 0.14), transparent 72%);
+    radial-gradient(38% 42% at 18% 22%, rgba(122, 106, 147, 0.10), transparent 70%),
+    radial-gradient(36% 40% at 82% 16%, rgba(63, 74, 90, 0.06), transparent 70%),
+    radial-gradient(44% 46% at 70% 84%, rgba(185, 154, 122, 0.09), transparent 72%);
   filter: blur(6px);
   animation: wl-drift 24s ease-in-out infinite alternate;
 }
@@ -99,14 +159,11 @@ body::before {
 .el-input__wrapper {
   border-radius: var(--wl-radius-control);
   box-shadow: 0 0 0 1px rgba(63, 74, 90, 0.14) inset;
-  transition:
-    box-shadow 0.38s var(--wl-spring),
-    background-color 0.38s var(--wl-ease),
-    transform 0.38s var(--wl-spring);
+  transition: var(--wl-motion);
 }
 
 .el-input__wrapper:hover {
-  transform: translateY(-1px);
+  transform: translateY(-1px) scale(1.004);
   box-shadow: 0 0 0 1px rgba(63, 74, 90, 0.24) inset;
 }
 
@@ -117,23 +174,41 @@ body::before {
     0 8px 22px -12px rgba(63, 74, 90, 0.55) !important;
 }
 
-/* 按钮：悬浮上抬 + 按下回弹 */
+/* 按钮：统一 0.3s 弹簧，Hover 放大到 1.02 */
 .el-button {
   border-radius: var(--wl-radius-control);
-  transition:
-    transform 0.38s var(--wl-spring),
-    box-shadow 0.38s var(--wl-spring),
-    background-color 0.28s var(--wl-ease),
-    color 0.28s var(--wl-ease),
-    border-color 0.28s var(--wl-ease);
+  transition: var(--wl-motion);
 }
 
 .el-button:not(.is-disabled):hover {
-  transform: translateY(-1px);
+  transform: scale(1.02);
 }
 
 .el-button:not(.is-disabled):active {
-  transform: translateY(0) scale(0.985);
+  transform: scale(0.985);
+}
+
+/* 表格行：Hover 轻微上浮，强调当前行 */
+.el-table__body tr.el-table__row {
+  transition: var(--wl-motion);
+}
+
+.el-table__body tr.el-table__row:hover > td.el-table__cell {
+  background: rgba(63, 74, 90, 0.035) !important;
+}
+
+.el-table__body tr.el-table__row:hover {
+  transform: translateY(-1px);
+}
+
+/* 标签与 Tab：圆角 6 / 8 统一 */
+.el-tag {
+  border-radius: var(--wl-radius-tag);
+}
+
+.el-tabs__item {
+  border-radius: var(--wl-radius-control) var(--wl-radius-control) 0 0;
+  transition: var(--wl-motion);
 }
 
 /* 表单项间距收敛，视觉更克制 */
@@ -178,6 +253,35 @@ body::before {
 .el-popper.is-light {
   border-radius: 10px;
   box-shadow: 0 18px 40px -28px rgba(63, 74, 90, 0.8);
+}
+
+/* ---------------- 明细大弹窗（800px 居中 / 16px 圆角） ---------------- */
+.detail-dialog {
+  border-radius: var(--wl-radius-dialog) !important;
+  background: #fff !important;
+  box-shadow: 0 32px 72px -36px rgba(40, 38, 36, 0.5) !important;
+  border: none !important;
+}
+
+.detail-dialog .el-dialog__header {
+  padding: 20px 24px 8px;
+  border-bottom: none;
+}
+
+.detail-dialog .el-dialog__title {
+  color: #282624;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+}
+
+.detail-dialog .el-dialog__body {
+  padding: 4px 24px 8px;
+}
+
+.detail-dialog .el-dialog__footer {
+  padding: 0 24px 18px;
+  border-top: none;
 }
 
 /* ---------------- 极简名单弹窗（400px / 无分隔线 / 16px 圆角） ---------------- */

@@ -7,11 +7,13 @@ import com.worklog.constant.ReportConstant;
 import com.worklog.constant.RoleConstant;
 import com.worklog.entity.DailyReport;
 import com.worklog.entity.Project;
+import com.worklog.entity.ProjectMember;
 import com.worklog.entity.SysDept;
 import com.worklog.entity.SysUser;
 import com.worklog.entity.WeeklyReport;
 import com.worklog.mapper.DailyReportMapper;
 import com.worklog.mapper.ProjectMapper;
+import com.worklog.mapper.ProjectMemberMapper;
 import com.worklog.mapper.SysDeptMapper;
 import com.worklog.mapper.SysUserMapper;
 import com.worklog.mapper.WeeklyReportMapper;
@@ -46,6 +48,7 @@ public class MemberServiceImpl implements MemberService {
     private final SysUserMapper sysUserMapper;
     private final SysDeptMapper sysDeptMapper;
     private final ProjectMapper projectMapper;
+    private final ProjectMemberMapper projectMemberMapper;
     private final DailyReportMapper dailyReportMapper;
     private final WeeklyReportMapper weeklyReportMapper;
 
@@ -99,11 +102,15 @@ public class MemberServiceImpl implements MemberService {
             }
         }
 
-        // 负责人 + 在该项目填报过日报/周报的成员
+        // 负责人 + 管理员分配的成员 + 在该项目填报过日报/周报的成员（兼容历史数据）
         Set<Long> userIds = new LinkedHashSet<>();
         if (project.getLeaderId() != null) {
             userIds.add(project.getLeaderId());
         }
+        projectMemberMapper.selectList(new LambdaQueryWrapper<ProjectMember>()
+                        .select(ProjectMember::getUserId)
+                        .eq(ProjectMember::getProjectId, projectId))
+                .stream().map(ProjectMember::getUserId).filter(Objects::nonNull).forEach(userIds::add);
         dailyReportMapper.selectList(new LambdaQueryWrapper<DailyReport>()
                         .select(DailyReport::getUserId)
                         .eq(DailyReport::getProjectId, projectId)

@@ -166,11 +166,12 @@ class ReportModuleTest extends ApiTestSupport {
     // ------------------------------------------------------------------
 
     @Test
-    @DisplayName("填报数据范围：员工仅本人 / 负责人本部门 / 管理员全部")
+    @DisplayName("填报数据范围：员工仅本人 / 负责人本部门 / 管理员不可见")
     void reportScopeByRole() throws Exception {
+        // 管理员只做系统配置，业务单据一律 403（防泄密）
+        assertThat(get("/reports/daily/page", login("admin"), Map.of("size", "100")).path("code").asInt())
+                .as("管理员不得读取日报列表").isEqualTo(403);
         // 断言不写死条数：开发期会有人在页面上手动造数据，这里只验证"归属"与"下限"
-        JsonNode adminView = get("/reports/daily/page", login("admin"), Map.of("size", "100")).path("data");
-        assertThat(adminView.path("total").asLong()).as("管理员可见不少于种子数据的 10 条").isGreaterThanOrEqualTo(10);
 
         JsonNode leaderView = get("/reports/daily/page", login("liyue"), Map.of("size", "100")).path("data");
         assertThat(leaderView.path("total").asLong()).as("技术中心成员不少于 7 条").isGreaterThanOrEqualTo(7);
@@ -187,9 +188,9 @@ class ReportModuleTest extends ApiTestSupport {
         designView.path("records").forEach(row ->
                 assertThat(row.path("userId").asLong()).isIn(3L, 6L, 7L));
 
-        // 周报同样受范围控制
-        assertThat(get("/reports/weekly/page", login("admin"), Map.of("size", "100"))
-                .path("data").path("total").asLong()).isGreaterThanOrEqualTo(3);
+        // 周报同样受范围控制：管理员 403，负责人本部门
+        assertThat(get("/reports/weekly/page", login("admin"), Map.of("size", "100")).path("code").asInt())
+                .as("管理员不得读取周报列表").isEqualTo(403);
         assertThat(get("/reports/weekly/page", login("liyue"), Map.of("size", "100"))
                 .path("data").path("total").asLong()).isGreaterThanOrEqualTo(2);
         JsonNode weeklyEmployee = get("/reports/weekly/page", login("wangfan"), Map.of("size", "100"))

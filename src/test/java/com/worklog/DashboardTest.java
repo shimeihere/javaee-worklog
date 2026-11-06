@@ -24,7 +24,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DashboardTest extends ApiTestSupport {
 
     @Test
-    @DisplayName("管理员：团队指标存在（全公司人数），项目数为全部 4 个")
+    @DisplayName("管理员：不下发团队业务指标，只给系统指标")
     void adminSummary() throws Exception {
         JsonNode data = get("/dashboard/summary", login("admin")).path("data");
 
@@ -33,8 +33,8 @@ class DashboardTest extends ApiTestSupport {
         assertThat(data.path("week").path("submitRate").asInt()).isBetween(0, 100);
         assertThat(data.path("week").path("startDate").asText())
                 .isEqualTo(LocalDate.now().with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).toString());
-        assertThat(data.path("team").isNull()).as("管理员应有团队指标").isFalse();
-        assertThat(data.path("team").path("memberCount").asInt()).isGreaterThanOrEqualTo(8);
+        assertThat(data.path("team").isNull()).as("管理员不应拿到团队提交率").isTrue();
+        assertThat(data.path("systemTotalUsers").asLong()).isGreaterThanOrEqualTo(9);
         assertThat(data.path("month").path("submitRate").asInt()).isBetween(0, 100);
     }
 

@@ -1,0 +1,1 @@
+import{s as t}from"./_plugin-vue_export-helper-C3MeLRoN.js";function o(e={page:1,size:100}){return t.get("/projects",{params:e})}function s(e){return t.post("/projects",e)}function n(e){return t.get(`/projects/${e}/members`)}function u(e,r){return t.put(`/projects/${e}`,r)}function a(e,r){return t.put(`/projects/${e}/leader`,{leaderId:r})}export{a,s as c,n as g,o as l,u};
