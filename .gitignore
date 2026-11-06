@@ -28,3 +28,9 @@ src/main/resources/application.yml
 ### OS ###
 Thumbs.db
 .DS_Store
+# 忽略本地运行脚本
+*.bat
+*.bak
+
+# 忽略历史补丁文件
+upgrade_project_member.sql
